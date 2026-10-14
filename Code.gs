@@ -1112,3 +1112,19 @@ function getWageDataFromSheet(sheetName, targetMonthlyTotal) {
   }
   return null;
 }
+
+// ======================================================================
+// ⭐ 권한 승인용 — 배포 계정으로 Apps Script 편집기에서 이 함수를 한 번 실행하면, 이 프로젝트가 쓰는
+//   권한(스프레드시트, 메일/Gmail, 외부 요청(Solapi), Drive, 트리거)을 한꺼번에 승인하는 창이 뜬다.
+//   "UrlFetchApp.fetch을(를) 호출할 수 있는 권한이 없습니다" 같은 오류가 나면 이 함수를 실행해
+//   승인한 뒤, 웹앱을 [배포 관리 → 수정 → 새 버전]으로 다시 배포한다. 실제로 메일/문자를 보내지는 않는다.
+// ======================================================================
+function authorizeServices() {
+  SpreadsheetApp.getActiveSpreadsheet().getName();
+  MailApp.getRemainingDailyQuota();
+  GmailApp.getAliases();
+  DriveApp.getRootFolder().getName();
+  ScriptApp.getProjectTriggers();
+  UrlFetchApp.fetch('https://api.solapi.com', { muteHttpExceptions: true });
+  Logger.log('권한 승인 완료: ' + Session.getEffectiveUser().getEmail());
+}
