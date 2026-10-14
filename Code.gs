@@ -126,15 +126,18 @@ function sendBatchContracts(commonData, workerList) {
   // ⭐ 법인별 발신 이메일은 화면 값이 아니라 회사설정 시트에서 직접 읽는다.
   var company = findCompanySetting_(commonData.companyName);
   commonData.senderEmail = company ? company.senderEmail : '';
+  // ⭐ 법인별 문자 발신번호(Solapi에 등록된 번호) — 비워두면 예전처럼 담당자연락처로 보낸다.
+  commonData.senderPhone = company ? company.senderPhone : '';
   var draftSheet = getOrCreateSheet_(ss, '계약대기', function (s) {
     s.appendRow(['ID', '법인', '성명', '전화번호', '이메일', '발송시간', '데이터']);
   });
 
   var queueSheet = getOrCreateSheet_(ss, '발송큐', function (s) {
-    s.appendRow(['ID', '성명', '이메일', '전화번호', '링크', '모드', '법인명', '담당자명', '담당자연락처', '담당자이메일', '발신이메일', '상태', '생성시간', '실패사유']);
+    s.appendRow(['ID', '성명', '이메일', '전화번호', '링크', '모드', '법인명', '담당자명', '담당자연락처', '담당자이메일', '발신이메일', '발신번호', '상태', '생성시간', '실패사유']);
   });
   ensureQueueFailReasonColumn(queueSheet);
   ensureHeaderColumn_(queueSheet, '발신이메일');
+  ensureHeaderColumn_(queueSheet, '발신번호');
   // ⭐ '발송큐' 행은 이름(헤더)으로 쓴다 — 나중에 열 순서를 바꾸거나 열을 더 추가해도
   //   이름만 같으면 rowFromHeader_가 올바른 칸에 그대로 써준다.
   var queueHeader = queueSheet.getRange(1, 1, 1, queueSheet.getLastColumn()).getValues()[0];
@@ -176,7 +179,7 @@ function sendBatchContracts(commonData, workerList) {
       'ID': uniqueId, '성명': worker.name, '이메일': worker.email || '', '전화번호': worker.password || '',
       '링크': link, '모드': workerMode, '법인명': commonData.companyName,
       '담당자명': commonData.managerName || '', '담당자연락처': commonData.managerPhone || '', '담당자이메일': commonData.managerEmail || '',
-      '발신이메일': commonData.senderEmail || '', '상태': 'PENDING', '생성시간': nowStr
+      '발신이메일': commonData.senderEmail || '', '발신번호': commonData.senderPhone || '', '상태': 'PENDING', '생성시간': nowStr
     }));
   }
 
@@ -277,6 +280,12 @@ function sendEmail_(opts) {
   GmailApp.sendEmail(opts.to, opts.subject, opts.body, options);
 }
 
+// ⭐ 문자 발신번호 결정 — 법인 발신번호 → 담당자연락처 → 기본 대표번호 순.
+//   어느 번호든 Solapi 콘솔에 발신번호로 등록돼 있어야 실제로 나간다(아니면 발송큐 실패사유에 남음).
+function smsSenderNumber_(senderPhone, managerPhone) {
+  return String(senderPhone || '').trim() || String(managerPhone || '').trim() || '0333400023';
+}
+
 // ⭐ "발송큐" 시트에서 대기 중(PENDING)인 항목을 최대 SEND_CHUNK_SIZE개 꺼내 실제로 발송하고,
 //   더 남아있으면 SEND_CHUNK_INTERVAL_MS 뒤에 자기 자신을 다시 호출하는 1회성 트리거를 예약한다.
 //   (Apps Script의 after() 1회성 트리거는 실행되고 나면 자동으로 삭제된다.)
@@ -335,7 +344,8 @@ function processSendQueue() {
       var rcol = claimedRows[k].col;
       var name = row[rcol['성명']], email = row[rcol['이메일']], phone = row[rcol['전화번호']], link = row[rcol['링크']], rowMode = row[rcol['모드']],
           companyName = row[rcol['법인명']], managerName = row[rcol['담당자명']], managerPhone = row[rcol['담당자연락처']], managerEmail = row[rcol['담당자이메일']],
-          senderEmail = rcol['발신이메일'] !== undefined ? row[rcol['발신이메일']] : '';
+          senderEmail = rcol['발신이메일'] !== undefined ? row[rcol['발신이메일']] : '',
+          senderPhone = rcol['발신번호'] !== undefined ? String(row[rcol['발신번호']] || '') : '';
 
       var msgVars = {
         workerName: name, companyName: companyName, link: link,
@@ -353,7 +363,7 @@ function processSendQueue() {
             senderEmail: senderEmail, name: companyName + ' 인사담당자'
           });
         } else if (rowMode === 'sms') {
-          sendSolapiMessage(phone, managerPhone || '0333400023', messageBody);
+          sendSolapiMessage(phone, smsSenderNumber_(senderPhone, managerPhone), messageBody);
         }
         sentCount++;
       } catch (e) {
@@ -629,7 +639,7 @@ function approveContract(id, password) {
         viewLink + "\n" +
         "(다운로드 가능 기간: ~" + expireDateStr + ")\n" +
         "담당자: " + (data.managerName || "") + " " + (data.managerPhone || "");
-      sendSolapiMessage(data.empPhone, data.managerPhone || '0333400023', smsBody);
+      sendSolapiMessage(data.empPhone, smsSenderNumber_(data.senderPhone, data.managerPhone), smsBody);
     } else if (data.workerContactEmail) {
       sendEmail_({
         senderEmail: data.senderEmail, name: data.companyName + ' 인사담당자', replyTo: data.managerEmail,
@@ -782,7 +792,7 @@ function getCompanySettings() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   // ⭐ 시트가 없으면 기존에 코드에 하드코딩돼 있던 값 그대로 최초 1회 생성해준다.
   var sheet = getOrCreateSheet_(ss, '회사설정', function (s) {
-    s.appendRow(['법인명', '주소', '전화번호', '대표자', '담당자명', '담당자연락처', '담당자이메일', '발신이메일']);
+    s.appendRow(['법인명', '주소', '전화번호', '대표자', '담당자명', '담당자연락처', '담당자이메일', '발신이메일', '발신번호']);
     var seedCompanies = [
       ['(주)케이프라이드', '강원도 횡성군 우천면 우천제2농공단지로 65-50', 'T. 033-644-4467 F.033-644-1944', '김도영', '송문주', '033-340-0023', 'kpride@example.com'],
       ['㈜케이펙', '강원도 강릉시 정원로 54, 8층(교동, 주니어타운)', 'T. 033-644-4467 F.033-644-1944', '김도영', '하주연', '033-340-0012', 'kpride@example.com'],
@@ -792,9 +802,13 @@ function getCompanySettings() {
     ];
     seedCompanies.forEach(function (row) { s.appendRow(row); });
   });
-  // ⭐ 8번째 '발신이메일' 열 — 법인별로 이 주소에서 메일을 보낸다(비워두면 스크립트 소유자 계정).
-  //   예전에 만들어진 회사설정 시트에는 이 열이 없을 수 있어 헤더만 붙여준다.
-  if (sheet.getLastColumn() < 8) withLock(function () { ensureHeaderColumn_(sheet, '발신이메일'); });
+  // ⭐ 8번째 '발신이메일'·9번째 '발신번호' 열 — 법인별로 이 주소/번호에서 메일·문자를 보낸다
+  //   (비워두면 메일은 스크립트 소유자 계정, 문자는 담당자연락처). 예전에 만들어진 회사설정
+  //   시트에는 이 열이 없을 수 있어 헤더만 붙여준다.
+  if (sheet.getLastColumn() < 9) withLock(function () {
+    ensureHeaderColumn_(sheet, '발신이메일');
+    ensureHeaderColumn_(sheet, '발신번호');
+  });
 
   var data = sheet.getDataRange().getValues();
   var list = [];
@@ -803,7 +817,7 @@ function getCompanySettings() {
     if (!r[0]) continue;
     list.push({
       name: r[0], address: r[1], phone: r[2], rep: r[3],
-      managerName: r[4], managerPhone: r[5], managerEmail: r[6], senderEmail: r[7] || ''
+      managerName: r[4], managerPhone: r[5], managerEmail: r[6], senderEmail: r[7] || '', senderPhone: r[8] ? String(r[8]) : ''
     });
   }
   return list;
@@ -827,7 +841,7 @@ function upsertCompany(company, originalName) {
   var row = [
     company.name || '', company.address || '', company.phone || '', company.rep || '',
     company.managerName || '', company.managerPhone || '', company.managerEmail || '',
-    String(company.senderEmail || '').trim()
+    String(company.senderEmail || '').trim(), String(company.senderPhone || '').trim()
   ];
 
   return withLock(function () {
