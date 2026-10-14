@@ -596,6 +596,12 @@ function approveContract(id, password) {
   var listSheet = getOrCreateSheet_(ss, '계약목록', function (s) {
     s.appendRow(['법인', '구분', '성명', '전화번호', '입사년도', '근로유형', '임금계약기간', '월지급액', '연봉', '발송일시', '제출일시', '완료일시', '문서링크', '데이터(JSON)']);
   });
+  // ⭐ 계약목록은 열을 헤더 이름으로 찾아 쓴다. '데이터(JSON)' 헤더가 없으면(이름을 바꿨거나 지운 경우)
+  //   계약 데이터가 어디에도 저장되지 않은 채 승인대기에서만 지워져 완료 링크가 영영 열리지 않으므로,
+  //   없으면 맨 끝에 그 열을 만들어서라도 반드시 저장한다.
+  if (listSheet.getLastColumn() === 0 || listSheet.getRange(1, 1, 1, listSheet.getLastColumn()).getValues()[0].indexOf('데이터(JSON)') === -1) {
+    withLock(function () { ensureHeaderColumn_(listSheet, '데이터(JSON)'); });
+  }
   var listHeader = listSheet.getRange(1, 1, 1, listSheet.getLastColumn()).getValues()[0];
 
   var viewLink = webAppUrl_() + "?id=" + id + "&mode=view";
