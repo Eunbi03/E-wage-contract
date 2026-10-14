@@ -1200,6 +1200,9 @@
   const messageTemplateTouchedRef = useRef(false);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isInvalidLink, setIsInvalidLink] = useState(false);
+  // ⭐ 접속 불가 화면에 함께 보여줄 사유(서버 오류 문구 또는 "찾지 못함") — 원인 파악용.
+  const [invalidReason, setInvalidReason] = useState('');
+  const failLink = (reason) => { setInvalidReason(reason); setIsInvalidLink(true); };
   // ⭐ 관리자 전용 화면(작성/수정/설정 탭, 승인 화면) 접근을 비밀번호로 막는다.
   //   adminReviewMode: ?mode=review 링크(승인대기의 "승인링크")로 들어온 경우만 true —
   //   근로자에게 가는 ?mode=view(완료 다운로드) 링크는 건드리지 않아 근로자 경험에는 영향 없다.
@@ -1274,13 +1277,12 @@
               setContractStatus(data.status || 'COMPLETED');
               setStep(3); 
             } else {
-              alert("유효하지 않거나 삭제된 문서입니다.");
-              setIsInvalidLink(true);
+              failLink('서버에서 이 계약서를 찾지 못했습니다(view).');
             }
           }).withFailureHandler(err => {
             clearTimeout(timeoutId); setLoading(false);
             console.error('계약서 로드 실패:', err);
-            setIsInvalidLink(true);
+            failLink('서버 오류(view): ' + (err && err.message ? err.message : String(err)));
           }).loadSignedData(id);
         } else {
           google.script.run.withSuccessHandler(data => {
@@ -1291,13 +1293,13 @@
               setLoading(true);
               google.script.run.withSuccessHandler(done => {
                 setLoading(false);
-                if (!done) { setIsInvalidLink(true); return; }
+                if (!done) { failLink('완료 처리된 계약서를 불러오지 못했습니다.'); return; }
                 setIsManagerView(true);
                 setFormData(done);
                 setSignatures({ sign1: done.sign1, sign2: done.sign2, sign3: done.sign3 });
                 setContractStatus('COMPLETED');
                 setStep(3);
-              }).withFailureHandler(err => { setLoading(false); console.error('계약서 로드 실패:', err); setIsInvalidLink(true); }).loadSignedData(id);
+              }).withFailureHandler(err => { setLoading(false); console.error('계약서 로드 실패:', err); failLink('서버 오류(완료본): ' + (err && err.message ? err.message : String(err))); }).loadSignedData(id);
               return;
             }
             if (data === "ALREADY_SUBMITTED") {
@@ -1316,13 +1318,12 @@
                 setStep(2); setIsIdentityVerified(false);
               }
             } else { 
-              alert("유효하지 않은 링크입니다.");
-              setIsInvalidLink(true);
+              failLink('서버에서 이 계약서를 찾지 못했습니다(서명 링크).');
             }
           }).withFailureHandler(err => {
             clearTimeout(timeoutId); setLoading(false);
             console.error('계약서 로드 실패:', err);
-            setIsInvalidLink(true);
+            failLink('서버 오류(서명 링크): ' + (err && err.message ? err.message : String(err)));
           }).loadDraftData(id);
         }
       } else { clearTimeout(timeoutId); setLoading(false); }
@@ -1734,6 +1735,7 @@
             문서가 삭제되었거나 기한이 지났을 수 있습니다.<br/>
             <strong className="text-gray-800 mt-2 inline-block">담당자에게 다시 문의해 주세요.</strong>
           </p>
+          {invalidReason && <p className="text-xs text-gray-400 mt-6 break-all">사유: {invalidReason}<br/>문서번호: {urlId}</p>}
         </div>
       </div>
     );

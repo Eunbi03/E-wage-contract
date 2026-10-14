@@ -1137,3 +1137,61 @@ function authorizeServices() {
   UrlFetchApp.fetch('https://api.solapi.com', { muteHttpExceptions: true });
   Logger.log('권한 승인 완료: ' + Session.getEffectiveUser().getEmail());
 }
+
+// ======================================================================
+// ⭐ 진단용 — "유효하지 않은 링크"가 뜰 때 Apps Script 편집기에서 실행한다.
+//   1) 아래 DIAG_ID에 링크의 id= 값을 붙여넣고 2) 함수 목록에서 diagnoseContract 선택 → ▶ 실행
+//   3) 실행 로그를 확인한다. 시트에 아무것도 쓰지 않는다.
+// ======================================================================
+var DIAG_ID = '';
+
+function diagnoseContract(id) {
+  id = String(id || DIAG_ID || '').trim();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var out = [];
+  out.push('스프레드시트: ' + ss.getName() + ' (' + ss.getId() + ')');
+  out.push('webAppUrl_(): ' + webAppUrl_());
+  out.push('getService().getUrl(): ' + ScriptApp.getService().getUrl());
+  out.push('찾는 ID: ' + id);
+  [['계약대기', 0, 6], ['승인대기', 0, 8]].forEach(function (t) {
+    var sh = ss.getSheetByName(t[0]);
+    if (!sh) { out.push(t[0] + ': 시트 없음'); return; }
+    var rows = sh.getDataRange().getValues();
+    out.push(t[0] + ': 헤더 [' + rows[0].join(' | ') + '], 데이터 ' + (rows.length - 1) + '행');
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][t[1]]) === id) {
+        var json = String(rows[i][t[2]]);
+        var ok = true; try { JSON.parse(json); } catch (e) { ok = false; }
+        out.push('  → ' + (i + 1) + '행에서 발견, JSON 길이 ' + json.length + ', JSON 해석 ' + (ok ? '성공' : '실패'));
+      }
+    }
+  });
+  var list = ss.getSheetByName('계약목록');
+  if (!list) {
+    out.push('계약목록: 시트 없음');
+  } else {
+    var lr = list.getDataRange().getValues();
+    var jsonCol = headerColumnMap_(lr[0])['데이터(JSON)'];
+    out.push('계약목록: 헤더 [' + lr[0].join(' | ') + '], 데이터 ' + (lr.length - 1) + '행, 데이터(JSON) 열 위치 ' + (jsonCol === undefined ? '없음(마지막 열 사용)' : (jsonCol + 1) + '번째'));
+    if (jsonCol === undefined) jsonCol = lr[0].length - 1;
+    var hit = false;
+    for (var j = 1; j < lr.length; j++) {
+      var cell = String(lr[j][jsonCol]);
+      if (cell.indexOf(id) !== -1) {
+        hit = true;
+        var parsed = null; try { parsed = JSON.parse(cell); } catch (e) {}
+        out.push('  → ' + (j + 1) + '행 JSON 안에 ID 있음, 길이 ' + cell.length + ', 해석 ' + (parsed ? '성공, contractId=' + parsed.contractId : '실패'));
+      } else if (lr[j].join('').indexOf(id) !== -1) {
+        hit = true;
+        out.push('  → ' + (j + 1) + '행에 ID가 있지만 데이터(JSON) 열이 아닌 다른 열에 있음');
+      }
+    }
+    if (!hit) out.push('  → 계약목록에서 ID를 찾지 못함');
+  }
+  var signed = null, err = '';
+  try { signed = loadSignedData(id); } catch (e) { err = String(e); }
+  out.push('loadSignedData 결과: ' + (signed ? '성공 (status=' + signed.status + ', 크기 ' + JSON.stringify(signed).length + '자)' : '없음 ' + err));
+  Logger.log(out.join('\n'));
+  return out.join('\n');
+}
+
