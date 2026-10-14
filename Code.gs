@@ -14,6 +14,15 @@ function doGet(e) {
 //   다른 사이트가 iframe으로 몰래 감싸 클릭재킹하는 걸 막기 위함입니다. 이 앱을 의도적으로 다른 페이지에
 //   iframe으로 삽입해 쓰고 있었다면 ALLOWALL로 되돌려야 합니다.
 
+// ⭐ 근로자/승인/완료 링크에 쓰는 웹앱 주소. ScriptApp.getService().getUrl()은 배포가 여러 개
+//   있으면(예: 예전 근로계약서·임금계약서 프로젝트를 복사해 쓰는 경우, 테스트 배포) 지금 쓰는 배포가
+//   아닌 다른 배포의 주소를 돌려줄 때가 있다. 그 배포는 예전 코드라 새 시트 구조에서 계약을 못 찾아
+//   "유효하지 않은 링크"가 된다. 스크립트 속성 WEBAPP_URL에 실제로 쓰는 /exec 주소를 넣어두면 그 주소를 쓴다.
+function webAppUrl_() {
+  var fixed = PropertiesService.getScriptProperties().getProperty('WEBAPP_URL');
+  return fixed ? String(fixed).trim().split('?')[0] : ScriptApp.getService().getUrl();
+}
+
 // ⭐ 동시 접근 시 시트 행이 꼬이지 않도록 잠그고 실행하는 헬퍼
 function withLock(fn) {
   var lock = LockService.getScriptLock();
@@ -142,7 +151,7 @@ function sendBatchContracts(commonData, workerList) {
   //   이름만 같으면 rowFromHeader_가 올바른 칸에 그대로 써준다.
   var queueHeader = queueSheet.getRange(1, 1, 1, queueSheet.getLastColumn()).getValues()[0];
 
-  var urlBase = ScriptApp.getService().getUrl();
+  var urlBase = webAppUrl_();
   var nowStr = new Date().toLocaleString();
 
   var draftRows = [];
@@ -534,7 +543,7 @@ function saveContractData(data) {
   // ⭐ mode=review(관리자 승인 전용) — mode=view는 완료된 계약서를 보는 용도(근로자 다운로드
   //   링크, "계약목록"의 문서링크)라 그쪽은 비밀번호를 요구하면 근로자가 막힌다. 아직 승인 전인
   //   이 링크만 mode=review로 발급해서 비밀번호 확인 없이는 데이터 자체가 안 내려가게 한다.
-  var viewLink = ScriptApp.getService().getUrl() + "?id=" + uniqueId + "&mode=review";
+  var viewLink = webAppUrl_() + "?id=" + uniqueId + "&mode=review";
 
   return withLock(function () {
     // ⭐ 중복 제출 방지 — 네트워크 재시도나 "최종 제출" 두 번 클릭으로 같은 id가 또 들어오면,
@@ -589,7 +598,7 @@ function approveContract(id, password) {
   });
   var listHeader = listSheet.getRange(1, 1, 1, listSheet.getLastColumn()).getValues()[0];
 
-  var viewLink = ScriptApp.getService().getUrl() + "?id=" + id + "&mode=view";
+  var viewLink = webAppUrl_() + "?id=" + id + "&mode=view";
   var data = null;
 
   // ⭐ 중복 승인 방지 — 이미 계약목록에 들어가 있으면(=이미 승인 처리됨) 또 행을 쌓거나

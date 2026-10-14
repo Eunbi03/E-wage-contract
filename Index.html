@@ -1286,8 +1286,19 @@
           google.script.run.withSuccessHandler(data => {
             clearTimeout(timeoutId); setLoading(false);
             if (data === "ALREADY_COMPLETED") {
-              setStep(3); setContractStatus('COMPLETED');
-              return alert("이미 최종 완료된 계약서입니다.");
+              // ⭐ 처음 받은 서명 링크를 계약 완료 후에 다시 열어도, 빈 계약서가 아니라 완료된 계약서
+              //   (mode=view와 같은 화면)를 보여준다 — 근로자가 완료 안내 대신 처음 링크를 다시 누르는 경우.
+              setLoading(true);
+              google.script.run.withSuccessHandler(done => {
+                setLoading(false);
+                if (!done) { setIsInvalidLink(true); return; }
+                setIsManagerView(true);
+                setFormData(done);
+                setSignatures({ sign1: done.sign1, sign2: done.sign2, sign3: done.sign3 });
+                setContractStatus('COMPLETED');
+                setStep(3);
+              }).withFailureHandler(err => { setLoading(false); console.error('계약서 로드 실패:', err); setIsInvalidLink(true); }).loadSignedData(id);
+              return;
             }
             if (data === "ALREADY_SUBMITTED") {
               // ⭐ 이미 서명 제출을 마치고 승인 대기 중인 상태 — 재작성은 막되, "유효하지 않은 링크"가

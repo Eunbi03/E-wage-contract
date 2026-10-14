@@ -6,7 +6,7 @@
 
 ## 배포 전 준비
 - Apps Script 프로젝트 파일: `Code.gs`, `Index.html`, `Seals.html`(전자근로계약서와 같은 `const sealImages = { '법인명': 'data:image/...' }`)
-- 스크립트 속성: `SOLAPI_API_KEY`, `SOLAPI_API_SECRET` (문자 발송 시)
+- 스크립트 속성: `SOLAPI_API_KEY`, `SOLAPI_API_SECRET` (문자 발송 시), `WEBAPP_URL` (실제로 쓰는 웹앱 /exec 주소 — 배포가 여러 개일 때 링크가 다른 배포로 가는 것 방지)
 - 고급 서비스 `Drive API` (완료 계약서 PDF 자동 보관 시, 없으면 HTML만 보관)
 - 법인별 발신 이메일(설정 탭 → 법인 수정 → 발신 이메일): 스크립트 소유자 Gmail의 [설정 → 계정 → 다른 주소에서 메일 보내기]에 등록·인증된 주소여야 한다. 비워두면 스크립트 소유자 계정으로 발송.
 - 법인별 문자 발신번호(설정 탭 → 법인 수정 → 문자 발신번호): Solapi 콘솔에 등록된 발신번호여야 한다. 비워두면 담당자연락처로 발송.
