@@ -501,6 +501,8 @@
         <input className="p-2 border rounded text-sm" placeholder="담당자 연락처" value={draft.managerPhone} onChange={e => setDraft({ ...draft, managerPhone: e.target.value })} />
         <input className="p-2 border rounded text-sm" placeholder="담당자 이메일" value={draft.managerEmail} onChange={e => setDraft({ ...draft, managerEmail: e.target.value })} />
       </div>
+      <input className="w-full p-2 border rounded text-sm" placeholder="발신 이메일 (비우면 스크립트 소유자 계정으로 발송)" value={draft.senderEmail || ''} onChange={e => setDraft({ ...draft, senderEmail: e.target.value })} />
+      <p className="text-[11px] text-gray-500 leading-tight">발신 이메일은 스크립트 소유자 Gmail의 [설정 → 계정 → 다른 주소에서 메일 보내기]에 등록·인증된 주소여야 합니다.</p>
       <div className="flex gap-2 pt-1">
         <button onClick={onSave} disabled={saving} className="flex-1 py-2 bg-blue-600 text-white rounded font-bold text-sm disabled:opacity-50">{saving ? '저장 중...' : '저장'}</button>
         <button onClick={onCancel} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded font-bold text-sm">취소</button>
@@ -641,7 +643,7 @@
     useEffect(() => { if (defaults) setDefaultsDraft(defaults); }, [defaults]);
 
     const startEdit = (idx) => { setEditingIdx(idx); setDraft({ ...companies[idx] }); };
-    const startNew = () => { setEditingIdx('new'); setDraft({ name: '', address: '', phone: '', rep: '', managerName: '', managerPhone: '', managerEmail: '' }); };
+    const startNew = () => { setEditingIdx('new'); setDraft({ name: '', address: '', phone: '', rep: '', managerName: '', managerPhone: '', managerEmail: '', senderEmail: '' }); };
     const cancelEdit = () => { setEditingIdx(null); setDraft(null); };
 
     const saveCompany = () => {
@@ -691,6 +693,7 @@
                     <div className="text-gray-500">{c.address}</div>
                     <div className="text-gray-500">{c.phone} · 대표 {c.rep}</div>
                     <div className="text-gray-500">담당자 {c.managerName} · {c.managerPhone} · {c.managerEmail}</div>
+                    <div className="text-gray-500">발신 이메일 {c.senderEmail || '(스크립트 소유자 계정)'}</div>
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <button onClick={() => startEdit(idx)} className="text-xs text-blue-600 font-bold">수정</button>
@@ -718,6 +721,10 @@
                 <select className="w-full p-2 border rounded text-sm" value={defaultsDraft.wageType} onChange={e => setDefaultsDraft({ ...defaultsDraft, wageType: e.target.value })}>
                   {wageTypes.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-600 block mb-1">최저시급(원) — 매년 1월에 바꿔 주세요</label>
+                <input inputMode="numeric" className="w-full p-2 border rounded text-sm" value={defaultsDraft.minimumWage || ''} onChange={e => setDefaultsDraft({ ...defaultsDraft, minimumWage: e.target.value.replace(/[^0-9]/g, '') })} />
               </div>
               <button onClick={saveDefaultsNow} disabled={savingDefaults} className="w-full py-2 bg-blue-600 text-white rounded font-bold text-sm disabled:opacity-50">{savingDefaults ? '저장 중...' : '기본값 저장'}</button>
             </div>
@@ -911,6 +918,137 @@
     );
   };
 
+  // ⭐ 작성 탭 근로자 카드 — 연봉갱신 일괄 발송처럼 사람마다 입사년도·근로유형·월지급액이 다르므로
+  //   임금 정보는 카드마다 따로 둔다. key는 카드 삭제로 순서가 바뀌어도 조회 응답이 엉뚱한 카드에
+  //   붙지 않게 하는 고정 식별자다.
+  let workerKeySeq = 0;
+  const newWorker = (wageType) => ({
+    key: ++workerKeySeq, name: '', password: '', email: '', mode: 'email',
+    joinYear: TODAY.slice(0, 4), wageType: wageType || '사무&생산',
+    wage: { ...EMPTY_WAGE }, wageLookup: 'idle', manualWage: false, wageTypeTouched: false,
+  });
+
+  // ⭐ 직접 입력한 임금의 오류 문구(없으면 null). 서버 resolveWorkerWage_와 같은 규칙이다.
+  const manualWageError = (wage) => {
+    const n = (k) => Number(wage[k]) || 0;
+    if (!n('monthlyTotal') || !n('annualTotal') || !n('hourlyWage')) return '월지급액·연봉·시급을 모두 입력해 주세요.';
+    const sum = n('baseWage') + n('overtimeWage') + n('nightWage');
+    if (sum !== n('monthlyTotal')) return `기본급+연장수당+야간수당 합계(${fmtWon(sum)}원)가 월지급액(${fmtWon(n('monthlyTotal'))}원)과 다릅니다.`;
+    return null;
+  };
+  const isWorkerWageReady = (w) => w.manualWage ? !manualWageError(w.wage) : (w.wageLookup === 'ok' && Number(w.wage.hourlyWage) > 0);
+  const isBelowMinimumWage = (w, minimumWage) => {
+    const hourly = Number(w.wage.hourlyWage) || 0;
+    return hourly > 0 && minimumWage > 0 && hourly < minimumWage;
+  };
+
+  // ⭐ 직접 입력 칸 — 금액은 콤마 표시(숫자만 저장), 시간은 37.5처럼 소수점을 허용한다.
+  const WageNumberInput = ({ label, value, onChange, decimal }) => (
+    <label className="block">
+      <span className="text-[11px] text-gray-500">{label}</span>
+      <input
+        inputMode={decimal ? 'decimal' : 'numeric'}
+        className="w-full p-1.5 border rounded text-right text-sm"
+        value={decimal ? (value || '') : (Number(value) ? Number(value).toLocaleString() : '')}
+        onChange={e => onChange(decimal ? e.target.value.replace(/[^0-9.]/g, '') : Number(e.target.value.replace(/[^0-9]/g, '')) || 0)}
+      />
+    </label>
+  );
+
+  const WorkerCard = ({ w, index, count, wageTypes, minimumWage, isPreview, onPreview, onUpdate, onRemove, onMonthlyChange, onWageTypeChange, onToggleManual, autoHyphenPhone }) => {
+    const setWage = (k, v) => onUpdate({ wage: { ...w.wage, [k]: v } });
+    const manualErr = w.manualWage ? manualWageError(w.wage) : null;
+    return (
+      <div onFocusCapture={onPreview} className={`mb-4 p-4 bg-white border rounded shadow-sm relative pt-12 ${isPreview && count > 1 ? 'ring-2 ring-blue-400' : ''}`}>
+        <div className="absolute top-0 left-0 right-0 px-3 py-2 flex justify-between items-center border-b border-gray-50 bg-gray-50/50 rounded-t">
+          <span className="text-xs font-bold text-blue-600">근로자 {index + 1}{isPreview && count > 1 ? ' · 미리보기 중' : ''}</span>
+          <div className="flex items-center gap-3">
+            {/* ⭐ 발송 방식을 근로자 카드별로 선택 */}
+            <div className="flex gap-2 text-xs">
+              <label className="flex items-center cursor-pointer">
+                <input type="radio" name={`mode-${w.key}`} value="email" checked={(w.mode || 'email') === 'email'} onChange={() => onUpdate({ mode: 'email' })} className="mr-1"/>이메일
+              </label>
+              <label className="flex items-center cursor-pointer">
+                <input type="radio" name={`mode-${w.key}`} value="sms" checked={w.mode === 'sms'} onChange={() => onUpdate({ mode: 'sms' })} className="mr-1"/>문자
+              </label>
+            </div>
+            {count > 1 && !isPreview && <button onClick={onPreview} className="text-xs text-blue-600 font-bold">미리보기</button>}
+            {count > 1 && (
+              <button onClick={onRemove} className="text-gray-400 hover:text-red-500 font-bold text-xl leading-none">×</button>
+            )}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <input placeholder="성 명" value={w.name} onChange={e => onUpdate({ name: e.target.value })} className="border p-2 w-full rounded text-sm"/>
+          <input placeholder="전화번호" value={w.password} onChange={e => onUpdate({ password: autoHyphenPhone(e.target.value) })} className="border p-2 w-full rounded text-sm bg-yellow-50"/>
+          {(w.mode || 'email') === 'email' && (<input placeholder="이메일" value={w.email} onChange={e => onUpdate({ email: e.target.value })} className="border p-2 w-full rounded text-sm"/>)}
+
+          <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+            <label className="block">
+              <span className="text-xs font-bold text-gray-600">입사년도</span>
+              <input inputMode="numeric" maxLength={4} value={w.joinYear} onChange={e => onUpdate({ joinYear: e.target.value.replace(/[^0-9]/g, '') })} className="border p-2 w-full rounded text-sm"/>
+            </label>
+            <label className="block">
+              <span className="text-xs font-bold text-gray-600">근로유형(임금테이블)</span>
+              <select value={w.wageType} onChange={e => onWageTypeChange(e.target.value)} disabled={w.manualWage} className="border p-2 w-full rounded text-sm bg-white disabled:bg-gray-100">
+                {wageTypes.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="text-xs font-bold text-gray-600">월지급액</span>
+            <div className="flex items-center gap-1">
+              <input
+                inputMode="numeric" placeholder="예: 2,156,880"
+                className="p-2 border rounded w-full text-right font-bold text-blue-700"
+                value={w.wage.monthlyTotal ? Number(w.wage.monthlyTotal).toLocaleString() : ''}
+                onChange={e => onMonthlyChange(e.target.value.replace(/[^0-9]/g, ''))}
+              />
+              <span className="text-sm">원</span>
+            </div>
+          </label>
+          {!w.manualWage && w.wageLookup === 'loading' && <p className="text-xs text-gray-500">임금테이블 조회 중...</p>}
+          {!w.manualWage && w.wageLookup === 'notfound' && <p className="text-xs text-red-500 font-bold">"{w.wageType}" 임금테이블에 없는 금액입니다. 아래 "직접 입력"을 쓸 수 있습니다.</p>}
+          {!w.manualWage && w.wageLookup === 'error' && <p className="text-xs text-red-500 font-bold">임금테이블 조회 중 오류가 발생했습니다.</p>}
+
+          <label className="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer w-fit">
+            <input type="checkbox" checked={w.manualWage} onChange={e => onToggleManual(e.target.checked)} />
+            임금테이블에 없는 금액 직접 입력
+          </label>
+
+          {w.manualWage ? (
+            <div className="bg-orange-50 border border-orange-200 rounded p-2 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <WageNumberInput label="연봉(원)" value={w.wage.annualTotal} onChange={v => setWage('annualTotal', v)} />
+                <WageNumberInput label="시급(원)" value={w.wage.hourlyWage} onChange={v => setWage('hourlyWage', v)} />
+                <WageNumberInput label="기본급(원)" value={w.wage.baseWage} onChange={v => setWage('baseWage', v)} />
+                <WageNumberInput label="기본시간(h)" value={w.wage.baseHours} onChange={v => setWage('baseHours', v)} decimal />
+                <WageNumberInput label="연장수당(원)" value={w.wage.overtimeWage} onChange={v => setWage('overtimeWage', v)} />
+                <WageNumberInput label="연장시간(h)" value={w.wage.overtimeHours} onChange={v => setWage('overtimeHours', v)} decimal />
+                <WageNumberInput label="야간수당(원)" value={w.wage.nightWage} onChange={v => setWage('nightWage', v)} />
+                <WageNumberInput label="야간시간(h)" value={w.wage.nightHours} onChange={v => setWage('nightHours', v)} decimal />
+              </div>
+              <p className="text-[11px] text-gray-500">연봉은 월지급액 × 12로 자동 채워지며 직접 고칠 수 있습니다.</p>
+              {manualErr && <p className="text-xs text-red-500 font-bold">{manualErr}</p>}
+            </div>
+          ) : (
+            <div className="bg-gray-50 p-2 rounded border text-gray-700 grid grid-cols-2 gap-x-2 gap-y-1 text-xs">
+              <span>연봉: <b>{fmtWon(w.wage.annualTotal)}</b>원</span>
+              <span>시급: <b>{fmtWon(w.wage.hourlyWage)}</b>원</span>
+              <span>기본급: {fmtWon(w.wage.baseWage)}원 ({w.wage.baseHours}h)</span>
+              <span>연장수당: {fmtWon(w.wage.overtimeWage)}원 ({w.wage.overtimeHours}h)</span>
+              <span>야간수당: {fmtWon(w.wage.nightWage)}원 ({w.wage.nightHours}h)</span>
+            </div>
+          )}
+          {isBelowMinimumWage(w, minimumWage) && (
+            <p className="text-xs text-red-600 font-bold bg-red-50 border border-red-200 rounded p-2">⚠ 시급 {fmtWon(w.wage.hourlyWage)}원이 최저시급 {fmtWon(minimumWage)}원보다 낮습니다.</p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // ⭐ 서명 단계(5·6·7단계)가 함께 쓰는 서명 캔버스 블록. 처음엔 App
   //   내부에 중첩해서 정의했었는데, 그러면 App이 리렌더될 때마다(여기서는 손을 떼서
   //   setIsDrawing(false)가 호출되는 바로 그 순간에!) 함수 참조가 매번 새로 생겨서 React가
@@ -970,11 +1108,11 @@
 
   // ⭐ 법인별 정보 (서버 설정(회사설정 시트)을 못 불러왔을 때 쓰는 기본값 — 최초 렌더링이 비어보이지 않도록 유지)
   const DEFAULT_COMPANIES = [
-    { name: '(주)케이프라이드', address: '강원도 횡성군 우천면 우천제2농공단지로 65-50', phone: 'T. 033-644-4467 F.033-644-1944', rep: '김도영', managerPhone: '033-340-0023', managerEmail: 'kpride@example.com', managerName: '송문주'},
-    { name: '㈜케이펙', address: '강원도 강릉시 정원로 54, 8층(교동, 주니어타운)', phone: 'T. 033-644-4467 F.033-644-1944', rep: '김도영', managerPhone: '033-340-0012', managerEmail: 'kpride@example.com', managerName: '하주연' },
-    { name: '백두대간영농조합법인', address: '강원도 강릉시 정원로 54, 8층(교동, 주니어타운)', phone: 'T. 033-644-4467 F.033-644-1944', rep: '김도영', managerPhone: '033-340-0021', managerEmail: 'kpride@example.com', managerName: '서영민' },
-    { name: '㈜보담', address: '강원도 원주시 저금어지길 456(가현동 강원LPC 2층)', phone: 'T. 033-644-4467 F.033-644-1944', rep: '이승수', managerPhone: '033-340-0020', managerEmail: 'kpride@example.com', managerName: '이선우' },
-    { name: '(주)마시타', address: '강원도 강릉시 정원로 54, 8층(교통, 주니어타운)', phone: 'T. 033-644-4467 F.033-644-1944', rep: '김주원', managerPhone: '033-340-0023', managerEmail: 'kpride@example.com', managerName: '송문주'}
+    { name: '(주)케이프라이드', address: '강원도 횡성군 우천면 우천제2농공단지로 65-50', phone: 'T. 033-644-4467 F.033-644-1944', rep: '김도영', managerPhone: '033-340-0023', managerEmail: 'kpride@example.com', managerName: '송문주', senderEmail: ''},
+    { name: '㈜케이펙', address: '강원도 강릉시 정원로 54, 8층(교동, 주니어타운)', phone: 'T. 033-644-4467 F.033-644-1944', rep: '김도영', managerPhone: '033-340-0012', managerEmail: 'kpride@example.com', managerName: '하주연', senderEmail: '' },
+    { name: '백두대간영농조합법인', address: '강원도 강릉시 정원로 54, 8층(교동, 주니어타운)', phone: 'T. 033-644-4467 F.033-644-1944', rep: '김도영', managerPhone: '033-340-0021', managerEmail: 'kpride@example.com', managerName: '서영민', senderEmail: '' },
+    { name: '㈜보담', address: '강원도 원주시 저금어지길 456(가현동 강원LPC 2층)', phone: 'T. 033-644-4467 F.033-644-1944', rep: '이승수', managerPhone: '033-340-0020', managerEmail: 'kpride@example.com', managerName: '이선우', senderEmail: '' },
+    { name: '(주)마시타', address: '강원도 강릉시 정원로 54, 8층(교통, 주니어타운)', phone: 'T. 033-644-4467 F.033-644-1944', rep: '김주원', managerPhone: '033-340-0023', managerEmail: 'kpride@example.com', managerName: '송문주', senderEmail: ''}
   ];
   // ⭐ 법인 목록/직인 이미지는 이제 서버(회사설정 시트, 직인 Drive 폴더)에서 불러온다 — 회사 추가/수정 시 코드 배포 없이 시트만 고치면 됨
   const [companies, setCompanies] = useState(DEFAULT_COMPANIES);
@@ -992,12 +1130,10 @@
   const [defaults, setDefaults] = useState(null);
   // ⭐ 근로유형(=임금테이블 시트 이름) 목록 — 서버 getConfig()의 wageTypes로 덮어쓴다.
   const [wageTypes, setWageTypes] = useState(['영업기본', '영업(35시간)', '영업(37.5시간)', '사무&생산', '감시적단속자']);
-  // ⭐ 월지급액 → 임금테이블 조회 상태: 'idle' | 'loading' | 'ok' | 'notfound' | 'error'
-  const [wageLookup, setWageLookup] = useState('idle');
-  // ⭐ 조회 응답이 입력 순서와 다르게 도착해도(타이핑 중 여러 번 호출) 가장 마지막 요청의
-  //   응답만 반영하기 위한 순번. 예전 임금계약서는 늦게 온 이전 응답이 최신 입력을 덮어쓸 수 있었다.
-  const wageReqSeqRef = useRef(0);
-  const wageLookupTimerRef = useRef(null);
+  // ⭐ 근로자 카드별 임금테이블 조회 순번/타이머 — { [worker.key]: ... }. 조회 응답이 입력 순서와
+  //   다르게 도착해도(타이핑 중 여러 번 호출) 그 카드의 가장 마지막 요청 응답만 반영한다.
+  const wageReqSeqRef = useRef({});
+  const wageLookupTimerRef = useRef({});
   // ⭐ 관리자 비밀번호 — 승인(approveContract) 때 서버에서 다시 확인하도록 게이트 통과 시 기억해둔다.
   //   화면 메모리에만 두고 어디에도 저장하지 않는다.
   const adminPasswordRef = useRef('');
@@ -1018,14 +1154,16 @@
   const [formData, setFormData] = useState({
     companyName: '(주)케이프라이드', companyAddress: '강원도 횡성군 우천면 우천제2농공단지로 65-50', companyPhone: 'T.033-644-4467 F.033-644-1944', repName: '김도영', managerPhone: '033-340-0023', managerEmail: 'kpride@example.com', managerName: '송문주',
     empName: '', empRegNumber: '', empAddress: '', empPhone: '',
-    contractKind: 'new', joinYear: TODAY.slice(0, 4), workPlace: '새말센터', signingDate: TODAY,
+    contractKind: 'new', workPlace: '새말센터', signingDate: TODAY,
     contractStart: TODAY, contractEnd: calcEnd(TODAY, 12),
-    wageType: '사무&생산', ...EMPTY_WAGE
+    joinYear: '', wageType: '', ...EMPTY_WAGE
   });
 
   // 4-3. 기타 UI 상태 변수 (Index.html)
-  const [workerList, setWorkerList] = useState([{ name: '', password: '', email: '', mode: 'email' }]);
-  // ⭐ 발송 방식은 이제 전역이 아니라 근로자 카드마다 개별 설정 — workerList[i].mode
+  // ⭐ 근로자 카드 목록 — 발송 방식·입사년도·근로유형·임금이 카드마다 따로다(newWorker 참고).
+  const [workerList, setWorkerList] = useState(() => [newWorker()]);
+  // ⭐ 작성 탭 미리보기에 보여줄 카드(key). 카드에 입력하면 그 카드로 자동 전환된다.
+  const [previewKey, setPreviewKey] = useState(null);
   // ⭐ 관리자 화면 상단 탭: 작성(기존 발송 화면) / 수정(조항 편집) / 설정(법인·기본값 관리)
   const [adminTab, setAdminTab] = useState('작성');
   // ⭐ 수정 탭에서 지금 "계약서 위에서" 바로 고치고 있는 조항 번호. null이면 전부 읽기 전용.
@@ -1214,9 +1352,12 @@
         //   companyTouchedRef와 같은 이유로, 이미 관리자가 직접 고친 필드가 있으면
         //   (defaultsTouchedRef) 늦게 도착한 이 응답으로 되돌리지 않는다.
         //   근로유형이 바뀌면 이전 근로유형 기준 금액은 무효이므로 임금 값도 같이 비운다.
+        //   근로유형은 카드별 값이라, 아직 손대지 않은(근로유형을 안 바꿨고 금액도 안 넣은) 카드만 바꾼다.
         if (!hasId && !defaultsTouchedRef.current) {
-          setFormData(prev => ({ ...prev, ...cfg.defaults, ...EMPTY_WAGE }));
-          setWageLookup('idle');
+          setFormData(prev => ({ ...prev, workPlace: cfg.defaults.workPlace || prev.workPlace }));
+        }
+        if (!hasId && cfg.defaults.wageType) {
+          setWorkerList(prev => prev.map(w => (!w.wageTypeTouched && !w.manualWage && !w.wage.monthlyTotal) ? { ...w, wageType: cfg.defaults.wageType } : w));
         }
       }
       // ⭐ 설정 탭의 발송 메시지 편집기를 이미 고치기 시작했으면(messageTemplateTouchedRef)
@@ -1264,45 +1405,70 @@
       setFormData({ ...formData, [name]: autoHyphenRegNum(newVal) });
     } else if (name === 'empPhone') {
       setFormData({ ...formData, [name]: autoHyphenPhone(newVal) });
-    } else if (name === 'wageType') {
-      defaultsTouchedRef.current = true;
-      setFormData({ ...formData, wageType: newVal });
-      requestWageLookup(newVal, formData.monthlyTotal);
-    } else if (name === 'monthlyTotal') {
-      requestWageLookup(formData.wageType, String(newVal).replace(/[^0-9]/g, ''));
     } else {
       if (name === 'workPlace') defaultsTouchedRef.current = true;
       setFormData({ ...formData, [name]: newVal });
     }
   };
 
-  // ⭐ 근로유형 + 월지급액으로 임금테이블 시트 조회. 금액을 바꾸는 즉시 이전 계산값을 비우고,
-  //   입력이 잠깐 멈추면(300ms) 서버에 물어본다. 응답은 가장 최근 요청의 것만 반영한다.
-  const requestWageLookup = (wageType, monthlyDigits) => {
-    const seq = ++wageReqSeqRef.current;
-    clearTimeout(wageLookupTimerRef.current);
-    setFormData(prev => ({ ...prev, ...EMPTY_WAGE, monthlyTotal: monthlyDigits ? Number(monthlyDigits) : 0 }));
-    if (!monthlyDigits || monthlyDigits.length < 6) { setWageLookup('idle'); return; }
-    setWageLookup('loading');
-    wageLookupTimerRef.current = setTimeout(() => {
+  // ⭐ 근로자 카드 하나 수정. patch는 객체 또는 (이전 카드 => 객체) 함수.
+  const updateWorker = (key, patch) => setWorkerList(prev => prev.map(w => w.key === key ? { ...w, ...(typeof patch === 'function' ? patch(w) : patch) } : w));
+
+  // ⭐ 근로유형 + 월지급액으로 임금테이블 시트 조회(카드별). 금액을 바꾸는 즉시 이전 계산값을 비우고,
+  //   입력이 잠깐 멈추면(300ms) 서버에 물어본다. 응답은 그 카드의 가장 최근 요청 것만 반영한다.
+  const requestWageLookup = (key, wageType, monthlyDigits) => {
+    const seq = (wageReqSeqRef.current[key] || 0) + 1;
+    wageReqSeqRef.current[key] = seq;
+    clearTimeout(wageLookupTimerRef.current[key]);
+    const ready = !!monthlyDigits && monthlyDigits.length >= 6;
+    updateWorker(key, { wage: { ...EMPTY_WAGE, monthlyTotal: monthlyDigits ? Number(monthlyDigits) : 0 }, wageLookup: ready ? 'loading' : 'idle' });
+    if (!ready) return;
+    wageLookupTimerRef.current[key] = setTimeout(() => {
       google.script.run.withSuccessHandler(res => {
-        if (seq !== wageReqSeqRef.current) return;
-        if (res) { setFormData(prev => ({ ...prev, ...res })); setWageLookup('ok'); }
-        else setWageLookup('notfound');
+        if (seq !== wageReqSeqRef.current[key]) return;
+        if (res) updateWorker(key, { wage: res, wageLookup: 'ok' });
+        else updateWorker(key, { wageLookup: 'notfound' });
       }).withFailureHandler(err => {
-        if (seq !== wageReqSeqRef.current) return;
+        if (seq !== wageReqSeqRef.current[key]) return;
         console.error('임금테이블 조회 실패:', err);
-        setWageLookup('error');
+        updateWorker(key, { wageLookup: 'error' });
       }).getWageDataFromSheet(wageType, monthlyDigits);
     }, 300);
   };
 
+  const handleWorkerMonthlyChange = (w, digits) => {
+    if (w.manualWage) {
+      // ⭐ 직접 입력 모드: 조회하지 않고, 연봉은 월지급액×12로 같이 채운다(이후 직접 수정 가능).
+      const monthly = Number(digits) || 0;
+      updateWorker(w.key, prev => ({ wage: { ...prev.wage, monthlyTotal: monthly, annualTotal: monthly * 12 } }));
+    } else {
+      requestWageLookup(w.key, w.wageType, digits);
+    }
+  };
+
+  const handleWorkerWageTypeChange = (w, wageType) => {
+    updateWorker(w.key, { wageType, wageTypeTouched: true });
+    if (!w.manualWage) requestWageLookup(w.key, wageType, w.wage.monthlyTotal ? String(w.wage.monthlyTotal) : '');
+  };
+
+  const handleWorkerToggleManual = (w, on) => {
+    if (on) {
+      // ⭐ 켜면 진행 중인 조회는 무시하고, 지금 보이는 값(조회된 값이 있으면 그 값)에서 이어서 고친다.
+      wageReqSeqRef.current[w.key] = (wageReqSeqRef.current[w.key] || 0) + 1;
+      clearTimeout(wageLookupTimerRef.current[w.key]);
+      const monthly = Number(w.wage.monthlyTotal) || 0;
+      updateWorker(w.key, { manualWage: true, wage: { ...w.wage, annualTotal: Number(w.wage.annualTotal) || monthly * 12 } });
+    } else {
+      updateWorker(w.key, { manualWage: false });
+      requestWageLookup(w.key, w.wageType, w.wage.monthlyTotal ? String(w.wage.monthlyTotal) : '');
+    }
+  };
+
+  const minimumWage = Number(defaults && defaults.minimumWage) || 10320;
+
   // 4-4. 주요 헬퍼 함수 (Index.html)
   // ⭐ (관리자)근로자 발송 정보 입력 여부 & 발송 완료
   const handleSend = () => {
-    if (!formData.monthlyTotal) return alert("임금(월지급액)을 입력해 주세요.");
-    if (wageLookup !== 'ok' || !Number(formData.hourlyWage)) return alert("임금테이블에서 확인된 금액이 아닙니다. 근로유형과 월지급액을 다시 확인해 주세요.");
-    if (!formData.joinYear || !/^\d{4}$/.test(String(formData.joinYear))) return alert("입사년도를 4자리 숫자로 입력해 주세요.");
     if (!formData.contractStart || !formData.contractEnd) return alert("임금계약기간을 입력해 주세요.");
     if (formData.contractEnd < formData.contractStart) return alert("임금계약기간의 종료일이 시작일보다 빠릅니다.");
     for (let i = 0; i < workerList.length; i++) {
@@ -1316,9 +1482,29 @@
       if (w.mode === 'email' && !w.email.trim()) {
         return alert(`${i + 1}번째 근로자의 이메일을 입력해 주세요.`);
       }
+      if (!/^\d{4}$/.test(String(w.joinYear || ''))) {
+        return alert(`${i + 1}번째 근로자의 입사년도를 4자리 숫자로 입력해 주세요.`);
+      }
+      if (!w.wage.monthlyTotal) {
+        return alert(`${i + 1}번째 근로자의 월지급액을 입력해 주세요.`);
+      }
+      if (!isWorkerWageReady(w)) {
+        return alert(w.manualWage
+          ? `${i + 1}번째 근로자: ${manualWageError(w.wage)}`
+          : `${i + 1}번째 근로자의 금액이 "${w.wageType}" 임금테이블에서 확인되지 않았습니다. 금액을 다시 확인하거나 "직접 입력"을 사용해 주세요.`);
+      }
     }
 
+    // ⭐ 최저시급 미달은 막지 않고 한 번 더 확인만 받는다(설정 탭의 최저시급 기준).
+    const belowMin = workerList.filter(w => isBelowMinimumWage(w, minimumWage));
+    if (belowMin.length && !confirm(`⚠ 다음 근로자의 시급이 최저시급(${fmtWon(minimumWage)}원)보다 낮습니다.\n${belowMin.map(w => `- ${w.name}: ${fmtWon(w.wage.hourlyWage)}원`).join('\n')}\n\n그래도 발송하시겠습니까?`)) return;
+
     if(!confirm("발송하시겠습니까?")) return;
+    const payload = workerList.map(w => ({
+      name: w.name, password: w.password, email: w.email, mode: w.mode,
+      joinYear: w.joinYear, wageType: w.wageType, monthlyTotal: w.wage.monthlyTotal,
+      manualWage: w.manualWage, wage: w.wage
+    }));
     setLoading(true);
     google.script.run.withSuccessHandler(res => {
       setLoading(false);
@@ -1331,7 +1517,7 @@
       } else {
         alert(`발송 완료! (총 ${res ? res.totalCount : workerList.length}명)`);
       }
-    }).withFailureHandler(handleServerError).sendBatchContracts(formData, workerList);
+    }).withFailureHandler(handleServerError).sendBatchContracts(formData, payload);
   };
 
   // 4-4. 주요 헬퍼 함수 (Index.html)
@@ -1496,11 +1682,23 @@
 
   // ⭐ 발송 최대 인원
   const addWorker = () => {
-    if (workerList.length >= 10) return alert("최대 10명"); setWorkerList([...workerList, { name: '', email: '', password: '', mode: 'email' }]); };
-    const removeWorker = (index) => { if (workerList.length === 1) return; 
-    const newList = [...workerList]; newList.splice(index, 1);
-    setWorkerList(newList);
+    if (workerList.length >= 10) return alert("최대 10명");
+    const w = newWorker((defaults && defaults.wageType) || workerList[0].wageType);
+    setWorkerList([...workerList, w]);
+    setPreviewKey(w.key);
   };
+  const removeWorker = (key) => {
+    if (workerList.length === 1) return;
+    setWorkerList(workerList.filter(w => w.key !== key));
+  };
+
+  // ⭐ 작성 탭 미리보기 — 공통 정보(formData)에 고른 카드의 근로자·임금 정보를 합쳐서 보여준다.
+  //   근로자 화면/승인/완료 화면(step 2·3)은 서버에서 받은 계약 데이터(formData)를 그대로 쓴다.
+  const previewWorker = workerList.find(w => w.key === previewKey) || workerList[0];
+  const previewData = step === 1 ? {
+    ...formData, empName: previewWorker.name, empPhone: previewWorker.password,
+    joinYear: previewWorker.joinYear, wageType: previewWorker.wageType, ...previewWorker.wage
+  } : formData;
 
 
   if (loading) return <div className="h-screen flex items-center justify-center font-bold text-xl">처리중...</div>;
@@ -1707,15 +1905,9 @@
                         <label className="flex items-center cursor-pointer"><input type="radio" name="contractKind" value="renewal" checked={formData.contractKind === 'renewal'} onChange={handleChange} className="mr-2"/> 연봉갱신</label>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="font-bold text-gray-700 mb-1 block">입사년도</label>
-                        <input name="joinYear" inputMode="numeric" maxLength={4} className="w-full p-2 border rounded" value={formData.joinYear} onChange={handleChange} />
-                      </div>
-                      <div>
-                        <label className="font-bold text-gray-700 mb-1 block">근무지</label>
-                        <input name="workPlace" className="w-full p-2 border rounded" value={formData.workPlace} onChange={handleChange} />
-                      </div>
+                    <div>
+                      <label className="font-bold text-gray-700 mb-1 block">근무지</label>
+                      <input name="workPlace" className="w-full p-2 border rounded" value={formData.workPlace} onChange={handleChange} />
                     </div>
                     <div>
                       <label className="font-bold text-gray-700 mb-1 block">계약 작성일</label>
@@ -1732,69 +1924,24 @@
                     </div>
                   </div>
 
-                  {/* 2. 임금 정보 (임금테이블 시트 조회) */}
-                  <div className="p-4 bg-blue-50 rounded border border-blue-200 space-y-3">
-                    <h3 className="font-bold text-blue-800">임금 정보 불러오기</h3>
-                    <div>
-                      <label className="text-gray-700 text-xs font-bold block mb-1">근로유형(임금테이블)</label>
-                      <select name="wageType" className="w-full p-2 border rounded bg-white font-bold" value={formData.wageType} onChange={handleChange}>
-                        {wageTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-gray-700 text-xs font-bold block mb-1">월지급액</label>
-                      <div className="flex items-center gap-1">
-                        <input
-                          name="monthlyTotal" inputMode="numeric"
-                          className="p-2 border rounded w-full text-right font-bold text-lg text-blue-700"
-                          placeholder="예: 2,156,880"
-                          value={formData.monthlyTotal ? Number(formData.monthlyTotal).toLocaleString() : ''}
-                          onChange={handleChange}
-                        />
-                        <span>원</span>
-                      </div>
-                      {wageLookup === 'loading' && <p className="text-xs text-gray-500 mt-1">임금테이블 조회 중...</p>}
-                      {wageLookup === 'notfound' && <p className="text-xs text-red-500 font-bold mt-1">"{formData.wageType}" 임금테이블에 없는 금액입니다.</p>}
-                      {wageLookup === 'error' && <p className="text-xs text-red-500 font-bold mt-1">임금테이블 조회 중 오류가 발생했습니다.</p>}
-                    </div>
-                    <div className="bg-white p-2 rounded border text-gray-700 grid grid-cols-2 gap-x-2 gap-y-1 text-xs">
-                      <span>연봉: <b>{fmtWon(formData.annualTotal)}</b>원</span>
-                      <span>시급: <b>{fmtWon(formData.hourlyWage)}</b>원</span>
-                      <span>기본급: {fmtWon(formData.baseWage)}원 ({formData.baseHours}h)</span>
-                      <span>연장수당: {fmtWon(formData.overtimeWage)}원 ({formData.overtimeHours}h)</span>
-                      <span>야간수당: {fmtWon(formData.nightWage)}원 ({formData.nightHours}h)</span>
-                    </div>
-                  </div>
-
                   {/* 5. 근로자 발송 정보 */}
                   <div className="p-4 bg-green-50 rounded border border-green-100">
                     <h3 className="font-bold text-green-800 mb-3">근로자 발송 정보</h3>
 
+                    <p className="text-xs text-gray-500 mb-3">입사년도·근로유형·월지급액은 근로자마다 따로 입력합니다. 오른쪽 미리보기는 지금 입력 중인 근로자 기준입니다.</p>
                     {workerList.map((w, i) => (
-                        <div key={i} className="mb-4 p-4 bg-white border rounded shadow-sm relative pt-12">
-                          <div className="absolute top-0 left-0 right-0 px-3 py-2 flex justify-between items-center border-b border-gray-50 bg-gray-50/50 rounded-t">
-                            <span className="text-xs font-bold text-blue-600">근로자 {i + 1}</span>
-                            <div className="flex items-center gap-3">
-                              {/* ⭐ 발송 방식을 근로자 카드별로 선택 (예전엔 전체 공통 1개였음) */}
-                              <div className="flex gap-2 text-xs">
-                                <label className="flex items-center cursor-pointer">
-                                  <input type="radio" name={`mode-${i}`} value="email" checked={(w.mode || 'email') === 'email'} onChange={() => { const n=[...workerList]; n[i].mode='email'; setWorkerList(n); }} className="mr-1"/>이메일
-                                </label>
-                                <label className="flex items-center cursor-pointer">
-                                  <input type="radio" name={`mode-${i}`} value="sms" checked={w.mode === 'sms'} onChange={() => { const n=[...workerList]; n[i].mode='sms'; setWorkerList(n); }} className="mr-1"/>문자
-                                </label>
-                              </div>
-                              {workerList.length > 1 && (
-                                <button onClick={() => removeWorker(i)} className="text-gray-400 hover:text-red-500 font-bold text-xl leading-none">×</button>
-                              )}
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <input placeholder="성 명" value={w.name} onChange={e=>{const n=[...workerList];n[i].name=e.target.value;setWorkerList(n)}} className="border p-2 w-full rounded text-sm"/>
-                            <input placeholder="전화번호" value={w.password} onChange={e=>{const n=[...workerList];n[i].password=autoHyphenPhone(e.target.value);setWorkerList(n)}} className="border p-2 w-full rounded text-sm bg-yellow-50"/>
-                            {(w.mode || 'email') === 'email' && (<input placeholder="이메일" value={w.email} onChange={e=>{const n=[...workerList];n[i].email=e.target.value;setWorkerList(n)}} className="border p-2 w-full rounded text-sm"/>)}
-                          </div>
-                        </div>
+                      <WorkerCard
+                        key={w.key} w={w} index={i} count={workerList.length}
+                        wageTypes={wageTypes} minimumWage={minimumWage}
+                        isPreview={w.key === previewWorker.key}
+                        onPreview={() => setPreviewKey(w.key)}
+                        onUpdate={patch => updateWorker(w.key, patch)}
+                        onRemove={() => removeWorker(w.key)}
+                        onMonthlyChange={digits => handleWorkerMonthlyChange(w, digits)}
+                        onWageTypeChange={t => handleWorkerWageTypeChange(w, t)}
+                        onToggleManual={on => handleWorkerToggleManual(w, on)}
+                        autoHyphenPhone={autoHyphenPhone}
+                      />
                     ))}
 
                     <button onClick={addWorker} className="w-full text-blue-600 border border-blue-300 bg-white py-2 rounded mt-2 hover:bg-blue-50 font-bold">+ 근로자 추가</button>
@@ -1849,7 +1996,7 @@
             <div className="a4-page mobile-scale relative">
               {/* ⭐ 수정 탭에서만 edit을 넘긴다 — 고른 문구가 이 계약서 위에서 바로 수정 가능해진다. */}
               <WageContractDocument
-                formData={formData}
+                formData={previewData}
                 clauses={clauses}
                 signatures={signatures}
                 sealImg={contractStatus === 'COMPLETED' ? sealImages[formData.companyName] : null}

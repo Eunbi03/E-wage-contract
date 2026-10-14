@@ -117,22 +117,24 @@ var SEND_QUOTA_RETRY_MS = 60 * 60 * 1000;     // 일일 메일 한도 초과 시
 function sendBatchContracts(commonData, workerList) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  // ⭐ 임금 금액(연봉/기본급/수당/시간)은 화면에서 넘어온 값을 그대로 믿지 않고, 같은
-  //   근로유형·월지급액으로 임금테이블 시트를 서버에서 다시 조회해 덮어쓴다. 화면 조회가
-  //   늦게 도착했거나(경쟁 상태) 근로유형만 바꾸고 재조회가 안 된 상태로 발송되는 걸 막는다.
-  var wage = getWageDataFromSheet(commonData.wageType, commonData.monthlyTotal);
-  if (!wage) {
-    throw new Error('임금테이블 "' + commonData.wageType + '" 시트에서 월지급액 ' + commonData.monthlyTotal + '원을 찾을 수 없습니다.');
-  }
-  for (var wk in wage) commonData[wk] = wage[wk];
+  // ⭐ 근로자마다 입사년도·근로유형·월지급액이 다르다(연봉갱신 일괄 발송). 시트에 한 줄이라도
+  //   쓰기 전에 전원의 임금을 먼저 확정해서, 한 명이라도 잘못돼 있으면 아무것도 발송하지 않는다.
+  var workerWages = workerList.map(function (worker, idx) {
+    return resolveWorkerWage_(worker, idx);
+  });
+
+  // ⭐ 법인별 발신 이메일은 화면 값이 아니라 회사설정 시트에서 직접 읽는다.
+  var company = findCompanySetting_(commonData.companyName);
+  commonData.senderEmail = company ? company.senderEmail : '';
   var draftSheet = getOrCreateSheet_(ss, '계약대기', function (s) {
     s.appendRow(['ID', '법인', '성명', '전화번호', '이메일', '발송시간', '데이터']);
   });
 
   var queueSheet = getOrCreateSheet_(ss, '발송큐', function (s) {
-    s.appendRow(['ID', '성명', '이메일', '전화번호', '링크', '모드', '법인명', '담당자명', '담당자연락처', '담당자이메일', '상태', '생성시간', '실패사유']);
+    s.appendRow(['ID', '성명', '이메일', '전화번호', '링크', '모드', '법인명', '담당자명', '담당자연락처', '담당자이메일', '발신이메일', '상태', '생성시간', '실패사유']);
   });
   ensureQueueFailReasonColumn(queueSheet);
+  ensureHeaderColumn_(queueSheet, '발신이메일');
   // ⭐ '발송큐' 행은 이름(헤더)으로 쓴다 — 나중에 열 순서를 바꾸거나 열을 더 추가해도
   //   이름만 같으면 rowFromHeader_가 올바른 칸에 그대로 써준다.
   var queueHeader = queueSheet.getRange(1, 1, 1, queueSheet.getLastColumn()).getValues()[0];
@@ -159,6 +161,11 @@ function sendBatchContracts(commonData, workerList) {
     individualData.workerContactEmail = worker.email;
     individualData.status = 'DRAFT';
     individualData.sentAt = nowStr;
+    individualData.joinYear = String(worker.joinYear || '');
+    individualData.wageType = worker.wageType || '';
+    var ww = workerWages[i];
+    for (var wk in ww.wage) individualData[wk] = ww.wage[wk];
+    individualData.wageSource = ww.source; // 'table' | 'manual'
 
     // ⭐ 추측 불가능한 ID 발급 (기존 "법인코드-이름-순번-날짜" 방식은 URL을 쉽게 유추/전수조사할 수 있어 변경)
     var uniqueId = Utilities.getUuid();
@@ -169,7 +176,7 @@ function sendBatchContracts(commonData, workerList) {
       'ID': uniqueId, '성명': worker.name, '이메일': worker.email || '', '전화번호': worker.password || '',
       '링크': link, '모드': workerMode, '법인명': commonData.companyName,
       '담당자명': commonData.managerName || '', '담당자연락처': commonData.managerPhone || '', '담당자이메일': commonData.managerEmail || '',
-      '상태': 'PENDING', '생성시간': nowStr
+      '발신이메일': commonData.senderEmail || '', '상태': 'PENDING', '생성시간': nowStr
     }));
   }
 
@@ -203,6 +210,71 @@ function sendBatchContracts(commonData, workerList) {
   }
 
   return { totalCount: workerList.length, sentNow: sentNow, failNow: failNow, queuedRemaining: queuedRemaining };
+}
+
+// ⭐ 근로자 한 명의 임금 확정.
+//   - 임금테이블(기본): 화면에서 넘어온 금액을 그대로 믿지 않고 근로유형·월지급액으로 시트를
+//     서버에서 다시 조회해 덮어쓴다(화면 조회가 늦게 도착한 경우 등 방지).
+//   - 직접 입력(manualWage): 임금테이블에 없는 금액. 화면 값을 쓰되 서버에서 한 번 더 검증한다.
+var WAGE_FIELDS = ['annualTotal', 'monthlyTotal', 'hourlyWage', 'baseWage', 'overtimeWage', 'nightWage', 'baseHours', 'overtimeHours', 'nightHours'];
+
+function resolveWorkerWage_(worker, idx) {
+  var who = (idx + 1) + '번째 근로자(' + (worker.name || '') + ')';
+  if (!/^\d{4}$/.test(String(worker.joinYear || ''))) {
+    throw new Error(who + '의 입사년도를 4자리 숫자로 입력해 주세요.');
+  }
+  if (worker.manualWage) {
+    var w = worker.wage || {};
+    var wage = {};
+    WAGE_FIELDS.forEach(function (f) {
+      var n = toNumber_(w[f]);
+      if (n < 0) throw new Error(who + '의 임금 항목에 음수가 있습니다.');
+      wage[f] = n;
+    });
+    if (!wage.monthlyTotal || !wage.annualTotal || !wage.hourlyWage) {
+      throw new Error(who + '의 월지급액·연봉·시급을 모두 입력해 주세요.');
+    }
+    if (wage.baseWage + wage.overtimeWage + wage.nightWage !== wage.monthlyTotal) {
+      throw new Error(who + '의 기본급+연장수당+야간수당 합계가 월지급액과 다릅니다.');
+    }
+    return { wage: wage, source: 'manual' };
+  }
+  var found = getWageDataFromSheet(worker.wageType, worker.monthlyTotal);
+  if (!found) {
+    throw new Error(who + ': 임금테이블 "' + worker.wageType + '" 시트에서 월지급액 ' + worker.monthlyTotal + '원을 찾을 수 없습니다.');
+  }
+  return { wage: found, source: 'table' };
+}
+
+// ⭐ 헤더에 colName 열이 없으면 끝에 추가한다(예전에 만들어진 시트에 새 열을 붙일 때).
+function ensureHeaderColumn_(sheet, colName) {
+  var lastCol = sheet.getLastColumn();
+  var header = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  if (header.indexOf(colName) === -1) sheet.getRange(1, lastCol + 1).setValue(colName);
+}
+
+// ⭐ 이메일 발송 공용 — senderEmail(법인별 발신 주소)이 있으면 GmailApp으로 그 주소에서 보내고,
+//   없으면 예전처럼 MailApp(스크립트 소유자 계정)으로 보낸다.
+//   GmailApp의 from은 스크립트 소유자 Gmail에 "다른 주소에서 메일 보내기"(별칭)로 등록·인증된
+//   주소만 쓸 수 있다. 등록 안 된 주소면 Gmail이 내는 애매한 오류 대신 원인을 바로 알려준다.
+function sendEmail_(opts) {
+  var sender = String(opts.senderEmail || '').trim();
+  if (!sender) {
+    var mail = { to: opts.to, subject: opts.subject, body: opts.body };
+    if (opts.replyTo) mail.replyTo = opts.replyTo;
+    if (opts.name) mail.name = opts.name;
+    MailApp.sendEmail(mail);
+    return;
+  }
+  var owner = String(Session.getEffectiveUser().getEmail() || '').toLowerCase();
+  var aliases = GmailApp.getAliases().map(function (a) { return String(a).toLowerCase(); });
+  if (sender.toLowerCase() !== owner && aliases.indexOf(sender.toLowerCase()) === -1) {
+    throw new Error('발신이메일 ' + sender + '이(가) 스크립트 소유자(' + owner + ') Gmail의 "다른 주소에서 메일 보내기"에 등록되어 있지 않습니다.');
+  }
+  var options = { from: sender };
+  if (opts.replyTo) options.replyTo = opts.replyTo;
+  if (opts.name) options.name = opts.name;
+  GmailApp.sendEmail(opts.to, opts.subject, opts.body, options);
 }
 
 // ⭐ "발송큐" 시트에서 대기 중(PENDING)인 항목을 최대 SEND_CHUNK_SIZE개 꺼내 실제로 발송하고,
@@ -262,7 +334,8 @@ function processSendQueue() {
       var row = claimedRows[k].row;
       var rcol = claimedRows[k].col;
       var name = row[rcol['성명']], email = row[rcol['이메일']], phone = row[rcol['전화번호']], link = row[rcol['링크']], rowMode = row[rcol['모드']],
-          companyName = row[rcol['법인명']], managerName = row[rcol['담당자명']], managerPhone = row[rcol['담당자연락처']], managerEmail = row[rcol['담당자이메일']];
+          companyName = row[rcol['법인명']], managerName = row[rcol['담당자명']], managerPhone = row[rcol['담당자연락처']], managerEmail = row[rcol['담당자이메일']],
+          senderEmail = rcol['발신이메일'] !== undefined ? row[rcol['발신이메일']] : '';
 
       var msgVars = {
         workerName: name, companyName: companyName, link: link,
@@ -275,11 +348,9 @@ function processSendQueue() {
       var failReason = '';
       try {
         if (rowMode === 'email') {
-          MailApp.sendEmail({
-            to: email,
-            replyTo: managerEmail,
-            subject: subject,
-            body: messageBody
+          sendEmail_({
+            to: email, replyTo: managerEmail, subject: subject, body: messageBody,
+            senderEmail: senderEmail, name: companyName + ' 인사담당자'
           });
         } else if (rowMode === 'sms') {
           sendSolapiMessage(phone, managerPhone || '0333400023', messageBody);
@@ -560,7 +631,8 @@ function approveContract(id, password) {
         "담당자: " + (data.managerName || "") + " " + (data.managerPhone || "");
       sendSolapiMessage(data.empPhone, data.managerPhone || '0333400023', smsBody);
     } else if (data.workerContactEmail) {
-      var completionMail = {
+      sendEmail_({
+        senderEmail: data.senderEmail, name: data.companyName + ' 인사담당자', replyTo: data.managerEmail,
         to: data.workerContactEmail,
         subject: "[계약완료] " + data.companyName + " 임금계약서 체결 완료 및 다운로드 안내",
         body: "안녕하세요. " + data.empName + "님.\n\n" +
@@ -570,9 +642,7 @@ function approveContract(id, password) {
           "▶ 다운로드 가능 기간: ~ " + expireDateStr + "\n\n" +
           "담당자: " + (data.managerName || "") + "\n전화번호: " + (data.managerPhone || "") + "\n이메일: " + (data.managerEmail || "") + "\n\n" +
           "감사합니다."
-      };
-      if (data.managerEmail) completionMail.replyTo = data.managerEmail;
-      MailApp.sendEmail(completionMail);
+      });
     }
   } catch (e) {
     Logger.log('완료 안내 발송 실패(' + completionMode + ', ' + (data.empPhone || data.workerContactEmail) + '): ' + e);
@@ -712,7 +782,7 @@ function getCompanySettings() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   // ⭐ 시트가 없으면 기존에 코드에 하드코딩돼 있던 값 그대로 최초 1회 생성해준다.
   var sheet = getOrCreateSheet_(ss, '회사설정', function (s) {
-    s.appendRow(['법인명', '주소', '전화번호', '대표자', '담당자명', '담당자연락처', '담당자이메일']);
+    s.appendRow(['법인명', '주소', '전화번호', '대표자', '담당자명', '담당자연락처', '담당자이메일', '발신이메일']);
     var seedCompanies = [
       ['(주)케이프라이드', '강원도 횡성군 우천면 우천제2농공단지로 65-50', 'T. 033-644-4467 F.033-644-1944', '김도영', '송문주', '033-340-0023', 'kpride@example.com'],
       ['㈜케이펙', '강원도 강릉시 정원로 54, 8층(교동, 주니어타운)', 'T. 033-644-4467 F.033-644-1944', '김도영', '하주연', '033-340-0012', 'kpride@example.com'],
@@ -722,6 +792,9 @@ function getCompanySettings() {
     ];
     seedCompanies.forEach(function (row) { s.appendRow(row); });
   });
+  // ⭐ 8번째 '발신이메일' 열 — 법인별로 이 주소에서 메일을 보낸다(비워두면 스크립트 소유자 계정).
+  //   예전에 만들어진 회사설정 시트에는 이 열이 없을 수 있어 헤더만 붙여준다.
+  if (sheet.getLastColumn() < 8) withLock(function () { ensureHeaderColumn_(sheet, '발신이메일'); });
 
   var data = sheet.getDataRange().getValues();
   var list = [];
@@ -730,10 +803,18 @@ function getCompanySettings() {
     if (!r[0]) continue;
     list.push({
       name: r[0], address: r[1], phone: r[2], rep: r[3],
-      managerName: r[4], managerPhone: r[5], managerEmail: r[6]
+      managerName: r[4], managerPhone: r[5], managerEmail: r[6], senderEmail: r[7] || ''
     });
   }
   return list;
+}
+
+function findCompanySetting_(name) {
+  var list = getCompanySettings();
+  for (var i = 0; i < list.length; i++) {
+    if (String(list[i].name) === String(name)) return list[i];
+  }
+  return null;
 }
 
 // ⭐ 설정 탭에서 회사를 추가/수정할 때 쓴다. originalName이 있으면(기존 회사 수정, 법인명 자체를
@@ -745,7 +826,8 @@ function upsertCompany(company, originalName) {
 
   var row = [
     company.name || '', company.address || '', company.phone || '', company.rep || '',
-    company.managerName || '', company.managerPhone || '', company.managerEmail || ''
+    company.managerName || '', company.managerPhone || '', company.managerEmail || '',
+    String(company.senderEmail || '').trim()
   ];
 
   return withLock(function () {
@@ -775,8 +857,10 @@ function deleteCompany(name) {
 
 // ⭐ 새 계약서를 작성할 때 처음 채워지는 초기값(근무지/근로유형)을 시트에서 관리.
 //   설정 탭에서 고치면 다음에 새로 작성하는 계약서부터 반영된다(이미 작성 중인 계약에는 영향 없음).
-var DEFAULT_FIELDS = ['workPlace', 'wageType'];
-var HARDCODED_DEFAULTS = { workPlace: '새말센터', wageType: '사무&생산' };
+// ⭐ minimumWage: 최저시급(원). 작성 탭에서 이보다 낮은 시급이면 경고한다. 매년 1월에 설정 탭에서
+//   새 금액으로 바꿔야 한다(2026년 10,320원).
+var DEFAULT_FIELDS = ['workPlace', 'wageType', 'minimumWage'];
+var HARDCODED_DEFAULTS = { workPlace: '새말센터', wageType: '사무&생산', minimumWage: '10320' };
 
 // ⭐ "08:00" 같은 시간 형식 문자열을 시트에 그대로 쓰면 구글시트가 자동으로 시간 값(Date)으로
 //   바꿔버릴 수 있어서, 읽고 쓸 때 모두 이를 방지/보정한다.
@@ -810,6 +894,8 @@ function saveDefaults(defaultsInput) {
   if (!sheet) { getDefaults(); sheet = ss.getSheetByName('기본값설정'); }
   var row = DEFAULT_FIELDS.map(function (f) { return defaultsInput[f] != null ? String(defaultsInput[f]) : ''; });
   return withLock(function () {
+    // ⭐ 헤더도 같이 맞춰 쓴다 — DEFAULT_FIELDS에 항목이 늘어난 뒤(예: minimumWage) 예전 시트에 저장해도 열 이름이 생긴다.
+    sheet.getRange(1, 1, 1, DEFAULT_FIELDS.length).setValues([DEFAULT_FIELDS]);
     var range = sheet.getRange(2, 1, 1, row.length);
     range.setNumberFormat('@');
     range.setValues([row]);
