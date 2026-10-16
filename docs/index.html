@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>전자계약 관리자 설명서</title>
+<style>
+  :root{
+    --ink:#111827; --text:#1f2937; --muted:#6b7280; --line:#e5e7eb; --bg:#f9fafb; --card:#fff;
+    --blue:#2563eb; --blue-d:#1e3a8a; --blue-l:#eff6ff; --blue-b:#dbeafe;
+    --green:#15803d; --green-l:#f0fdf4; --green-b:#bbf7d0;
+    --amber:#b45309; --amber-l:#fffbeb; --amber-b:#fde68a;
+    --red:#b91c1c; --red-l:#fef2f2; --red-b:#fecaca;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:var(--text);background:var(--bg);line-height:1.7;font-size:15px}
+  a{color:var(--blue)}
+  .wrap{display:flex;max-width:1160px;margin:0 auto}
+  nav.toc{width:262px;flex-shrink:0;position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;padding:28px 14px 40px 20px;border-right:1px solid var(--line);background:#fff}
+  nav.toc .t{font-weight:800;color:var(--blue-d);font-size:15px}
+  nav.toc .s{font-size:12px;color:var(--muted);margin-bottom:18px}
+  nav.toc a{display:block;font-size:13.5px;color:#374151;text-decoration:none;padding:6px 10px;border-radius:7px}
+  nav.toc a:hover{background:var(--blue-l);color:var(--blue)}
+  nav.toc .grp{font-size:11.5px;font-weight:700;color:var(--muted);margin:14px 10px 4px}
+  main{flex:1;min-width:0;padding:40px 32px 120px}
+  .c{max-width:820px;margin:0 auto}
+  h1{font-size:27px;color:var(--ink);margin:0 0 6px}
+  .meta{font-size:13px;color:var(--muted);margin-bottom:22px}
+  section{margin:0 0 52px;scroll-margin-top:20px}
+  h2{font-size:20px;color:var(--ink);margin:0 0 14px;padding-bottom:8px;border-bottom:2px solid var(--ink)}
+  h2 .n{color:var(--blue);margin-right:6px}
+  h3{font-size:16px;color:var(--ink);margin:24px 0 8px}
+  p{margin:0 0 10px}
+  ol,ul{padding-left:22px;margin:0 0 12px}
+  li{margin-bottom:5px}
+  code{font-family:Consolas,Menlo,monospace;font-size:13px;background:#f3f4f6;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:#1e40af}
+  b{color:var(--ink)}
+  .box{border-radius:10px;padding:13px 16px;margin:14px 0;border:1px solid;font-size:14.5px}
+  .box.tip{background:var(--blue-l);border-color:var(--blue-b)}
+  .box.warn{background:var(--amber-l);border-color:var(--amber-b)}
+  .box.stop{background:var(--red-l);border-color:var(--red-b)}
+  .box.ok{background:var(--green-l);border-color:var(--green-b)}
+  .box>b:first-child{margin-right:4px}
+  table{width:100%;border-collapse:collapse;margin:10px 0 16px;font-size:14px;background:#fff}
+  th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+  th{background:#f3f4f6;color:var(--ink)}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:12px 0 14px}
+  .flow span{background:#fff;border:1.5px solid #d1d5db;border-radius:9px;padding:8px 12px;font-size:13.5px;font-weight:700}
+  .flow span small{display:block;font-weight:400;color:var(--muted);font-size:11.5px}
+  .flow span.me{border-color:var(--blue);background:var(--blue-l)}
+  .flow i{font-style:normal;color:#9ca3af}
+  .tag{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:1px 9px;margin-right:4px}
+  .tag.l{background:#e0e7ff;color:#3730a3}
+  .tag.w{background:#fce7f3;color:#9d174d}
+  details{background:#fff;border:1px solid var(--line);border-radius:10px;margin:0 0 10px;padding:0 16px}
+  details summary{cursor:pointer;font-weight:700;color:var(--ink);padding:12px 0;list-style:none}
+  details summary::before{content:"▸ ";color:var(--blue)}
+  details[open] summary::before{content:"▾ "}
+  details>div{padding:0 0 12px}
+  .check li{list-style:none;margin-left:-18px}
+  .check li::before{content:"☐ ";color:var(--blue)}
+  .ask{display:inline-block;font-size:12px;font-weight:700;color:#7c2d12;background:#ffedd5;border:1px solid #fed7aa;border-radius:999px;padding:1px 10px;margin-left:8px;vertical-align:middle;white-space:nowrap}
+  h2 .ask{font-size:12.5px}
+  .upd{display:none;font-size:10.5px;font-weight:800;color:#fff;background:#ef4444;border-radius:999px;padding:0 7px;margin-left:6px;vertical-align:1px;line-height:17px}
+  nav.toc a.has-upd .upd{display:inline-block}
+  #updates{display:none;background:#fff;border:1px solid #fecaca;border-left:4px solid #ef4444;border-radius:10px;padding:13px 16px;margin:0 0 30px;font-size:14.5px}
+  #updates .h{font-weight:800;color:var(--ink);margin-bottom:6px}
+  #updates .d{font-weight:700;color:#b91c1c;margin:8px 0 2px;font-size:13.5px}
+  #updates ul{margin:0 0 4px}
+  .menu{display:none}
+  @media (max-width:960px){
+    nav.toc{position:fixed;z-index:40;left:0;top:0;transform:translateX(-100%);transition:transform .2s;box-shadow:0 0 24px rgba(0,0,0,.15)}
+    nav.toc.open{transform:none}
+    .menu{display:inline-block;position:sticky;top:10px;z-index:30;margin:10px 0 0 16px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}
+    main{padding:8px 18px 100px}
+  }
+  @media print{nav.toc,.menu{display:none!important}.wrap{display:block}main{padding:0}details{border:none}details>div{display:block}}
+</style>
+</head>
+<body>
+<button class="menu" onclick="document.querySelector('nav.toc').classList.toggle('open')">☰ 목차</button>
+<div class="wrap">
+<nav class="toc">
+  <div class="t">전자계약 관리자 설명서</div>
+  <div class="s">근로계약서 · 임금계약서</div>
+  <div class="grp">매일 쓰는 것</div>
+  <a href="#flow">1. 한눈에 보기<span class="upd">업데이트</span></a>
+  <a href="#send">2. 계약서 보내기<span class="upd">업데이트</span></a>
+  <a href="#approve">3. 승인하기 (직인)<span class="upd">업데이트</span></a>
+  <a href="#done">4. 완료 계약서 보기<span class="upd">업데이트</span></a>
+  <div class="grp">가끔 하는 것</div>
+  <a href="#settings">5. 설정 바꾸기<span class="upd">업데이트</span></a>
+  <a href="#mail">6. 메일·문자 발신처 바꾸기<span class="upd">업데이트</span></a>
+  <a href="#deploy">7. 코드 업데이트 반영<span class="upd">업데이트</span></a>
+  <a href="#auth">8. 권한 승인 (권한 검토)<span class="upd">업데이트</span></a>
+  <div class="grp">문제가 생겼을 때</div>
+  <a href="#faq">9. 문제 해결<span class="upd">업데이트</span></a>
+  <a href="#dont">10. 하면 안 되는 것<span class="upd">업데이트</span></a>
+  <a href="#first">부록. 처음 설치 체크리스트<span class="upd">업데이트</span></a>
+</nav>
+
+<main><div class="c">
+<h1>전자계약 관리자 설명서</h1>
+<div class="meta">전자근로계약서 · 전자임금계약서 공용 · 최종 업데이트 2026년 10월 16일</div>
+<div class="box tip"><b>이렇게 읽으세요.</b> 평소에는 <b>1~4장</b>만 보면 됩니다. 설정을 바꾸거나 오류가 났을 때만 해당 장을 찾아보세요.
+두 계약서는 사용법이 거의 같고, 다른 부분만 <span class="tag l">근로</span><span class="tag w">임금</span> 표시를 붙였습니다.</div>
+
+<!-- ⭐ 업데이트 내역: 아래 #updates 박스와 목차의 "업데이트" 라벨은 맨 아래 UPDATES 목록으로 자동 생성됩니다. -->
+<div id="updates"><div class="h">🔔 최근 업데이트</div><div id="updates-list"></div></div>
+
+<!-- 1 -->
+<section id="flow">
+<h2><span class="n">1.</span>한눈에 보기</h2>
+<div class="flow">
+  <span class="me">① 작성·발송<small>관리자</small></span><i>→</i>
+  <span>② 본인인증·서명<small>근로자</small></span><i>→</i>
+  <span class="me">③ 확인·승인<small>관리자</small></span><i>→</i>
+  <span>④ 완료 안내 자동 발송<small>시스템</small></span>
+</div>
+<p>관리자가 할 일은 <b>① 보내기</b>와 <b>③ 승인하기</b> 두 가지뿐입니다. 근로자가 서명해도 <b>관리자가 승인해야 계약이 끝납니다.</b></p>
+<div class="box ok"><b>🔗 접속 주소</b> (관리자 비밀번호로 들어갑니다)
+<ul style="margin:8px 0 0">
+  <li><span class="tag l">근로</span><b>전자근로계약서</b> — <a href="https://script.google.com/macros/s/AKfycbzaVoQ6nNrcVVd4Xj6LvTMGigjkusE9JZ1z-EBpDMshIslutBKagyrbqmL_I7IM_uqU/exec" target="_blank" rel="noopener">바로가기</a></li>
+  <li><span class="tag w">임금</span><b>전자임금계약서</b> — <a href="https://script.google.com/macros/s/AKfycbwMu7NT9mWxCz6sEgdBXEH3ToXqpW62nl3EkErEBngURI8kAcag4pS4xge0JAaG7sEraQ/exec" target="_blank" rel="noopener">바로가기</a></li>
+</ul>
+<p style="margin:8px 0 0;font-size:13px;color:var(--muted)">이 주소는 사내에서만 사용하고 외부에 공유하지 마세요. 주소가 바뀌면 경영지원팀 이은비가 이곳을 갱신합니다.</p>
+</div>
+<table>
+  <tr><th>무엇을</th><th>어디서</th></tr>
+  <tr><td>계약서 작성·발송, 문구·설정 변경</td><td>아래 <b>접속 주소</b> → 관리자 비밀번호 입력</td></tr>
+  <tr><td>진행 상황 확인, 승인 링크, 완료 링크</td><td>연결된 <b>구글 스프레드시트</b></td></tr>
+  <tr><td>코드 붙여넣기·배포·권한 승인</td><td>관리자가 직접 하지 않습니다(개발 담당 영역).<br>필요하면 <span class="ask">문의: 경영지원팀 이은비</span></td></tr>
+</table>
+<table>
+  <tr><th>시트</th><th>뜻</th><th>관리자가 볼 때</th></tr>
+  <tr><td><code>발송큐</code></td><td>보낸 문자·메일 기록</td><td>상태가 <code>FAILED</code>면 <b>실패사유</b> 열 확인</td></tr>
+  <tr><td><code>계약대기</code></td><td>근로자가 아직 서명 안 함</td><td>볼 일 거의 없음</td></tr>
+  <tr><td><code>승인대기</code></td><td>근로자 서명 완료, <b>승인 기다리는 중</b></td><td><b>매일 확인</b> → 승인링크 클릭</td></tr>
+  <tr><td><code>계약목록</code></td><td>승인까지 끝난 완료 계약</td><td>문서링크로 다시 열기</td></tr>
+</table>
+<div class="box warn"><b>⚠ 알림이 오지 않습니다.</b> 근로자가 서명해도 관리자에게 알림이 가지 않습니다. <code>승인대기</code> 시트를 주기적으로 확인하세요.</div>
+</section>
+
+<!-- 2 -->
+<section id="send">
+<h2><span class="n">2.</span>계약서 보내기 — 작성 탭</h2>
+<ol>
+  <li>웹앱 주소를 열고 <b>관리자 비밀번호</b>를 입력합니다.</li>
+  <li><b>작성</b> 탭에서 아래 항목을 채웁니다. 오른쪽 미리보기에 계약서가 그대로 보입니다.</li>
+  <li>맨 아래 <b>발송하기</b> → 확인.</li>
+</ol>
+
+<h3><span class="tag l">근로</span>근로계약서 입력 항목</h3>
+<ul>
+  <li><b>계약 법인, 입사일</b></li>
+  <li><b>계약 형태</b>: 정규직/계약직(기간 선택), 필요하면 <b>수습 적용</b>(기간·수습급여)</li>
+  <li><b>근무장소, 담당업무</b></li>
+  <li><b>근로·휴게시간</b>: 주마다 다르면 <b>격주</b> 체크 후 직접 입력</li>
+</ul>
+
+<h3><span class="tag w">임금</span>임금계약서 입력 항목</h3>
+<ul>
+  <li>공통: <b>계약 법인, 계약 구분</b>(신규입사/연봉갱신 — 계약목록 '구분' 열에만 기록), <b>근무지, 계약 작성일, 임금계약기간</b>(시작일을 바꾸면 종료일이 1년 뒤로 자동 계산)</li>
+  <li>근로자 카드마다 따로: <b>입사년도, 근로유형, 월지급액</b>
+    <ul>
+      <li>월지급액을 넣으면 해당 근로유형의 <b>임금테이블 시트</b>에서 연봉·시급·기본급·수당이 자동으로 채워집니다.</li>
+      <li>"임금테이블에 없는 금액입니다"가 뜨면 → <b>임금테이블에 없는 금액 직접 입력</b>을 체크하고 직접 입력합니다. 기본급+연장+야간 합계가 월지급액과 같아야 합니다.</li>
+      <li>시급이 <b>최저시급보다 낮으면 빨간 경고</b>가 뜹니다(발송은 가능, 한 번 더 확인).</li>
+      <li>오른쪽 미리보기는 지금 입력 중인 근로자 기준입니다.</li>
+    </ul>
+  </li>
+</ul>
+
+<h3>근로자 정보 (공통)</h3>
+<ul>
+  <li><b>+ 근로자 추가</b>로 한 번에 최대 10명.</li>
+  <li>카드마다 <b>이메일/문자</b> 선택, 성명, <b>전화번호</b>(근로자 접속 비밀번호가 됩니다 — 정확히!), 이메일.</li>
+</ul>
+
+<h3>발송 후 뜨는 안내</h3>
+<table>
+  <tr><th>안내</th><th>뜻 / 할 일</th></tr>
+  <tr><td>발송 완료! (총 N명)</td><td>모두 정상 발송</td></tr>
+  <tr><td>발송 시작됨 … 나머지는 순차 발송</td><td>인원이 많아 나눠 보내는 중. 기다리면 자동으로 다 나갑니다.</td></tr>
+  <tr><td>⚠ 발송 실패 있음</td><td><code>발송큐</code> 시트 → 실패사유 확인 → <a href="#faq">9장</a></td></tr>
+</table>
+</section>
+
+<!-- 3 -->
+<section id="approve">
+<h2><span class="n">3.</span>승인하기 (직인 날인)</h2>
+<ol>
+  <li><code>승인대기</code> 시트에서 해당 행의 <b>승인링크</b>를 클릭합니다.</li>
+  <li><b>관리자 비밀번호</b>를 입력하면 근로자가 서명한 계약서가 보입니다.</li>
+  <li>내용 확인 후 <b>승인 및 직인 날인</b> → 확인.</li>
+</ol>
+<p>승인하면 자동으로: 직인이 찍히고 → 근로자에게 <b>처음 보낸 방식(문자/이메일)</b>으로 완료 안내가 가고 → <code>계약목록</code>으로 옮겨지고 → Drive <code>…_완료보관함</code> 폴더에 사본이 저장됩니다.</p>
+<div class="box warn"><b>"직인 없이 저장됩니다"</b>가 뜨면 법인명 표기가 맞지 않는 경우가 대부분입니다 → <a href="#faq">9장</a></div>
+</section>
+
+<!-- 4 -->
+<section id="done">
+<h2><span class="n">4.</span>완료 계약서 보기·다운로드</h2>
+<ul>
+  <li><code>계약목록</code> 시트의 <b>문서링크</b>를 클릭하면 언제든 다시 열 수 있습니다.</li>
+  <li>근로자는 완료 안내로 받은 링크, 또는 <b>처음 받은 서명 링크</b>로도 완료본을 볼 수 있습니다.</li>
+  <li><b>PDF 저장</b> 버튼 → 인쇄 창에서 "PDF로 저장". 직인이 다 뜬 뒤에 버튼이 나타납니다.</li>
+  <li>열리는 데 오래 걸리면 "잠시만 기다려 주세요"가 뜹니다. <b>창을 닫지 말고 기다리면</b> 열립니다.</li>
+</ul>
+<div class="box tip"><b>근로자가 PDF 저장이 안 된다고 하면</b> 카카오톡·네이버 앱 안에서 열었을 가능성이 큽니다. Chrome·Safari로 링크를 다시 열도록 안내하세요.</div>
+</section>
+
+<!-- 5 -->
+<section id="settings">
+<h2><span class="n">5.</span>설정 바꾸기</h2>
+<table>
+  <tr><th style="width:38%">바꾸고 싶은 것</th><th>어디서</th></tr>
+  <tr><td>법인 추가·수정·삭제 (주소, 대표자, 담당자)</td><td><b>설정</b> 탭 → 계약 법인 관리</td></tr>
+  <tr><td>법인별 발신 이메일·문자 발신번호</td><td><b>설정</b> 탭 → 법인 수정 → 발신 이메일 / 문자 발신번호 (<a href="#mail">6장</a>)</td></tr>
+  <tr><td>새 계약서 기본값</td><td><b>설정</b> 탭 → 새 계약서 초기값<br><span class="tag l">근로</span>근무장소·업무·근로시간 <span class="tag w">임금</span>근무지·근로유형·<b>최저시급(매년 1월 변경)</b></td></tr>
+  <tr><td>근로자에게 가는 문자·메일 문구</td><td><b>설정</b> 탭 → 발송 메시지. 변수 블록(근로자명·링크 등)을 끌어다 넣기</td></tr>
+  <tr><td>계약서 조항·동의서 문구</td><td><b>수정</b> 탭 → 고칠 부분 선택 → 오른쪽 계약서에서 바로 수정 → 저장</td></tr>
+  <tr><td>관리자 비밀번호</td><td><b>관리</b> 탭 (기존 비밀번호 필요)</td></tr>
+  <tr><td><span class="tag w">임금</span>임금 금액표</td><td>스프레드시트의 근로유형별 시트(<code>사무&amp;생산</code> 등) 직접 수정</td></tr>
+  <tr><td>직인 이미지 교체</td><td><span class="ask">문의: 경영지원팀 이은비</span><br><span style="color:var(--muted);font-size:13px">(Apps Script의 <code>Seals.html</code> 수정 → <code>clearSealCache</code> 실행)</span></td></tr>
+</table>
+<div class="box tip"><b>참고</b> 설정·문구 변경은 <b>다음에 새로 보내는 계약서부터</b> 적용됩니다. 이미 보낸 계약서는 바뀌지 않습니다.</div>
+<div class="box warn"><b>⚠ 법인명</b>은 직인을 찾는 기준입니다. <code>회사설정</code>의 법인명과 <code>Seals.html</code>의 이름이 글자 하나까지 같아야 합니다. 표기는 <code>(주)</code>로 통일합니다(<code>㈜</code>는 다른 글자로 인식).</div>
+<p><span class="tag l">근로</span>제2조(계약기간)·제6조(근로시간 표), <span class="tag w">임금</span>임금계약기간 행·월지급액 내역 표는 구조가 고정이라 수정 탭에서 바뀌지 않습니다.</p>
+</section>
+
+<!-- 6 -->
+<section id="mail">
+<h2><span class="n">6.</span>메일·문자 발신처 바꾸기</h2>
+<div class="box tip"><b>원리 한 줄 요약</b> 메일을 <b>실제로 보내는 계정</b>은 웹앱을 배포한 구글 계정(이하 <b>배포 계정</b>)입니다. 법인별 <b>발신 이메일</b>을 넣으면, 배포 계정이 보내되 받는 사람에게는 <b>그 주소에서 온 것처럼</b> 보입니다(Gmail 별칭).</div>
+
+<h3>A. 메인(배포) 계정으로 보내되, 다른 주소로 보이게 하기</h3>
+<p>예: 배포 계정은 <code>main@gmail.com</code>, 근로자에게는 <code>hr@gmail.com</code>으로 보이게</p>
+<ol>
+  <li><b>배포 계정(main)</b>으로 Gmail 로그인 → 톱니바퀴 → <b>모든 설정 보기</b> → <b>계정 및 가져오기</b></li>
+  <li><b>다른 주소에서 메일 보내기</b> → <b>다른 이메일 주소 추가</b> → 이름과 <code>hr@gmail.com</code> 입력 → "별칭으로 처리" 체크 유지 → 다음</li>
+  <li><b>인증 메일 보내기</b> → <code>hr@gmail.com</code>으로 로그인해 확인 링크 클릭(또는 코드 입력)</li>
+  <li>웹앱 <b>설정</b> 탭 → 해당 법인 수정 → <b>발신 이메일</b>에 <code>hr@gmail.com</code> 입력 → 저장</li>
+</ol>
+<p>별칭 등록 전에 보내면 발송큐 실패사유에 <i>"…다른 주소에서 메일 보내기에 등록되어 있지 않습니다"</i>가 남습니다. 등록 후 <a href="#resend">다시 보내기</a>를 하세요.</p>
+
+<h3>B. 반대로 — 다른 계정을 배포 계정으로 바꾸기<span class="ask">문의: 경영지원팀 이은비</span></h3>
+<p style="color:var(--muted);font-size:13.5px">배포·권한 작업이 필요해 경영지원팀 이은비와 함께 진행합니다.</p>
+<p>예: 지금은 <code>main</code>이 보내는데, 앞으로 <code>hr</code> 계정이 직접 보내게(메일 한도도 hr 기준)</p>
+<ol>
+  <li>스프레드시트를 <code>hr</code> 계정에 <b>편집자로 공유</b>합니다.</li>
+  <li><code>hr</code> 계정으로 로그인 → 스프레드시트 → <b>확장 프로그램 → Apps Script</b></li>
+  <li><a href="#auth">8장 권한 승인</a>을 <code>hr</code> 계정으로 진행합니다.</li>
+  <li><b>배포 → 새 배포 → 웹 앱</b>, "다음 사용자 인증 정보로 실행: <b>나</b>" → 배포</li>
+  <li>새 웹앱 주소를 즐겨찾기하고, 설정 탭의 <b>발신 이메일 칸은 비워 둡니다</b>(hr 주소로 그대로 나감).</li>
+</ol>
+<div class="box warn"><b>⚠ 주소가 바뀝니다.</b> 새 배포는 웹앱 주소가 새로 생깁니다. 이미 보낸 링크(서명·승인·완료)는 예전 배포로 연결되므로 <b>예전 배포를 지우지 마세요.</b> 원래 계정(main)이 보이게 하려면 hr 계정에서 A 방법으로 main 주소를 별칭 등록하면 됩니다.</div>
+
+<h3>문자 발신번호</h3>
+<ul>
+  <li>설정 탭 → 법인 수정 → <b>문자 발신번호</b>. 비우면 담당자연락처로 보냅니다.</li>
+  <li>어떤 번호든 <b>Solapi 콘솔에 발신번호로 등록</b>돼 있어야 실제로 나갑니다.</li>
+</ul>
+<div class="box tip"><b>근로자에게 보이는 연락처는 따로입니다.</b> 문자·메일 본문의 "담당자/전화번호/이메일"은 법인의 <b>담당자 정보</b>가 들어갑니다. 실제 발신 주소·번호와 다르게 둘 수 있습니다.</div>
+</section>
+
+<!-- 7 -->
+<section id="deploy">
+<h2><span class="n">7.</span>코드 업데이트 반영 (새 버전 배포)<span class="ask">문의: 경영지원팀 이은비</span></h2>
+<p>개발자에게 새 <code>Code.gs</code>·<code>Index.html</code>을 받았을 때:</p>
+<ol>
+  <li>Apps Script 편집기에서 각 파일 내용을 <b>전부 지우고 붙여넣기</b> → 저장(Ctrl+S)</li>
+  <li>새 기능이 권한을 요구하면 <a href="#auth">8장</a> 진행</li>
+  <li><b>배포 → 배포 관리 → 연필(수정) → 버전: 새 버전 → 배포</b></li>
+</ol>
+<div class="box stop"><b>⛔ 3번을 빼먹으면</b> 저장만 되고 실제 웹앱은 <b>예전 코드 그대로</b> 돌아갑니다. "새 배포"가 아니라 <b>기존 배포 수정</b>이어야 주소가 유지됩니다.</div>
+</section>
+
+<!-- 8 -->
+<section id="auth">
+<h2><span class="n">8.</span>권한 승인 (권한 검토)<span class="ask">문의: 경영지원팀 이은비</span></h2>
+<p><b>언제?</b> 처음 설치할 때, 배포 계정을 바꿨을 때, 업데이트 후 <i>"…을(를) 호출할 수 있는 권한이 없습니다"</i> 오류가 날 때.</p>
+<ol>
+  <li><b>배포 계정</b>으로 로그인한 상태에서 Apps Script 편집기를 엽니다.</li>
+  <li>위쪽 함수 선택 목록에서 <code>authorizeServices</code>를 고르고 <b>▶ 실행</b>.</li>
+  <li><b>권한 검토</b> → 계정 선택 → "Google에서 확인하지 않은 앱" 화면이 나오면 <b>고급 → (프로젝트명)(으)로 이동(안전하지 않음)</b> → <b>허용</b>.</li>
+  <li>실행 로그에 <b>"권한 승인 완료"</b>가 보이면 끝 → <a href="#deploy">7장 3번(새 버전 배포)</a>.</li>
+  <li>실패해서 멈춰 있던 발송은 <a href="#resend">다시 보내기</a>.</li>
+</ol>
+<details><summary>그래도 같은 권한 오류가 나면</summary><div>
+  <p>프로젝트 설정(톱니바퀴) → <b>"appsscript.json" 매니페스트 파일 표시</b>를 켭니다. <code>appsscript.json</code>에 <code>"oauthScopes"</code> 목록이 <b>있을 때만</b> 아래 항목 중 빠진 것을 추가하고 저장한 뒤 1번부터 다시 하세요(목록이 없으면 건드리지 마세요).</p>
+  <p><code>https://www.googleapis.com/auth/spreadsheets.currentonly</code><br>
+  <code>https://www.googleapis.com/auth/script.external_request</code><br>
+  <code>https://www.googleapis.com/auth/script.send_mail</code><br>
+  <code>https://mail.google.com/</code><br>
+  <code>https://www.googleapis.com/auth/userinfo.email</code><br>
+  <code>https://www.googleapis.com/auth/script.scriptapp</code><br>
+  <code>https://www.googleapis.com/auth/drive</code><br>
+  <code>https://www.googleapis.com/auth/documents</code></p>
+  <p>배포 설정의 "다음 사용자 인증 정보로 실행"이 <b>나</b>인지도 확인하세요.</p>
+</div></details>
+</section>
+
+<!-- 9 -->
+<section id="faq">
+<h2><span class="n">9.</span>문제 해결<span class="ask">문의: 경영지원팀 이은비</span></h2>
+<p>아래로 해결되지 않으면 <b>발송큐 실패사유</b>나 <b>화면의 오류 문구</b>를 캡처해서 경영지원팀 이은비에게 보내 주세요.</p>
+
+<details open id="resend"><summary>실패한 발송을 다시 보내고 싶어요</summary><div>
+  <ol><li><code>발송큐</code>에서 상태가 <code>FAILED</code>인 칸을 <code>PENDING</code>으로 바꿉니다.</li>
+  <li>Apps Script 편집기에서 <code>processSendQueue</code>를 ▶ 실행합니다.</li></ol>
+  <p>근로자 정보(번호·이메일)가 틀렸던 경우는 작성 탭에서 <b>새로 발송</b>하세요.</p>
+</div></details>
+
+<details><summary>발송큐 실패사유별 해결</summary><div>
+<table>
+  <tr><th>실패사유에 보이는 말</th><th>해결</th></tr>
+  <tr><td>권한이 없습니다 / Required permissions</td><td><a href="#auth">8장 권한 승인</a></td></tr>
+  <tr><td>다른 주소에서 메일 보내기에 등록되어 있지 않습니다</td><td><a href="#mail">6장 A</a> 별칭 등록, 급하면 설정 탭에서 발신 이메일 비우기</td></tr>
+  <tr><td>Solapi … 발신번호 / 전송 거부</td><td>Solapi 콘솔에 발신번호 등록 또는 잔액 확인</td></tr>
+  <tr><td>Solapi 자격증명 … 설정되어 있지 않습니다</td><td>스크립트 속성에 <code>SOLAPI_API_KEY</code>, <code>SOLAPI_API_SECRET</code> 등록(부록)</td></tr>
+  <tr><td>Invalid email / 잘못된 주소</td><td>근로자 이메일 오타 → 새로 발송</td></tr>
+</table>
+</div></details>
+
+<details><summary>링크를 열면 "접속 불가 / 유효하지 않은 링크"가 떠요</summary><div>
+  <ul>
+    <li>화면 아래 회색 글씨의 <b>사유</b>를 확인하세요.</li>
+    <li>코드를 바꾼 뒤라면 <b>새 버전 배포</b>를 했는지 확인(<a href="#deploy">7장</a>).</li>
+    <li><code>계약목록</code> 시트의 맨 윗줄 이름을 바꾸지 않았는지 확인 — 특히 <code>데이터(JSON)</code>, <code>문서링크</code>는 <b>글자 그대로</b>여야 합니다.</li>
+    <li><span class="tag w">임금</span>편집기에서 <code>diagnoseContract</code>를 실행하면 원인을 로그로 알려줍니다(맨 아래 <code>DIAG_ID</code>에 링크의 <code>id=</code> 값을 넣고 실행).</li>
+  </ul>
+</div></details>
+
+<details><summary>직인이 안 찍혀요 / 예전 직인이 나와요</summary><div>
+  <ul>
+    <li>경고창의 사유에 나온 법인명과 <code>Seals.html</code>의 이름을 똑같이 맞추세요(<code>(주)</code> 표기 통일).</li>
+    <li>직인을 바꿨는데 예전 것이 나오면 편집기에서 <code>clearSealCache</code> 실행(안 해도 6시간 뒤 자동 반영).</li>
+    <li>열리는 속도를 높이려면 직인 이미지를 300×300px 정도로 줄여서 넣으세요.</li>
+  </ul>
+</div></details>
+
+<details><summary>완료 계약서가 늦게 열려요</summary><div>
+  <p>"잠시만 기다려 주세요"가 보이면 창을 닫지 말고 기다리세요. 처음 한 번은 직인을 읽느라 느리고, 이후에는 빨라집니다.</p>
+</div></details>
+
+<details><summary>근로자가 서명했다는데 승인대기에 없어요</summary><div>
+  <p>근로자가 마지막 <b>최종 제출</b>까지 누르지 않은 경우입니다. 링크를 다시 열어 끝까지 진행하도록 안내하세요(<code>계약대기</code>에 남아 있으면 미제출).</p>
+</div></details>
+
+<details><summary>링크를 잘못 보냈어요</summary><div>
+  <p>보낸 링크를 취소하는 기능은 없습니다. 작성 탭에서 올바른 내용으로 <b>새로 발송</b>하면 새 링크가 나갑니다.</p>
+</div></details>
+
+<details><summary>관리자 비밀번호를 잊었어요</summary><div>
+  <p>Apps Script 편집기 → 프로젝트 설정 → 스크립트 속성에서 <code>ADMIN_PASSWORD_HASH</code>를 <b>삭제</b>하면 초기 비밀번호로 돌아갑니다(초기 비밀번호는 개발자에게 문의). 접속 후 바로 <b>관리</b> 탭에서 바꾸세요.</p>
+</div></details>
+</section>
+
+<!-- 10 -->
+<section id="dont">
+<h2><span class="n">10.</span>하면 안 되는 것</h2>
+<ul>
+  <li><b>시트 맨 윗줄(머리말) 이름 바꾸기</b> — 특히 <code>계약목록</code>·<code>발송큐</code>. 열 순서는 바꿔도 되지만 이름은 그대로.</li>
+  <li><b>ID·상태·데이터 칸 직접 수정</b> — 다시 보내기용 <code>FAILED → PENDING</code> 변경만 예외.</li>
+  <li><b>승인대기·계약목록 행 삭제</b> — 해당 계약 링크가 영영 안 열립니다.</li>
+  <li><b>예전 배포 삭제</b> — 이미 보낸 링크가 끊깁니다.</li>
+  <li><b>웹앱 주소·관리자 비밀번호 외부 공유</b>.</li>
+</ul>
+</section>
+
+<!-- appendix -->
+<section id="first">
+<h2><span class="n">부록.</span>처음 설치 체크리스트<span class="ask">문의: 경영지원팀 이은비</span></h2>
+<p>새 스프레드시트·새 계정에 처음 설치하거나 <b>파일 → 사본 만들기</b>로 복사했을 때 한 번만 합니다.</p>
+<ul class="check">
+  <li>Apps Script에 <code>Code.gs</code>, <code>Index.html</code>, <code>Seals.html</code>이 있는지 확인</li>
+  <li><a href="#auth">8장 권한 승인</a> (<code>authorizeServices</code> 실행)</li>
+  <li>프로젝트 설정 → 스크립트 속성에 <code>SOLAPI_API_KEY</code>, <code>SOLAPI_API_SECRET</code> 추가 (사본에는 복사되지 않음)</li>
+  <li>편집기 왼쪽 <b>서비스(+)</b> → <b>Drive API</b> 추가 (완료본 PDF 자동 보관용, 없으면 HTML만 보관)</li>
+  <li><b>배포 → 새 배포 → 웹 앱</b> · 실행: <b>나</b> · 액세스: <b>모든 사용자</b> → 주소 즐겨찾기</li>
+  <li>웹앱 접속 → <b>관리</b> 탭에서 관리자 비밀번호 변경</li>
+  <li><b>설정</b> 탭에서 법인 정보·발신 이메일·발신번호 확인 (<a href="#mail">6장</a>)</li>
+  <li><span class="tag w">임금</span>근로유형별 임금테이블 시트 준비: 시트 이름 <code>영업기본</code>, <code>영업(35시간)</code>, <code>영업(37.5시간)</code>, <code>사무&amp;생산</code>, <code>감시적단속자</code> · 열: B 연봉, C 월지급액, D 기본급, E 연장수당, F 야간수당, J 기본시간, K 시급, L 연장시간, M 야간시간 (1행은 제목)</li>
+  <li><span class="tag w">임금</span>(배포가 여러 개라면) 스크립트 속성 <code>WEBAPP_URL</code>에 실제 쓰는 웹앱 주소(<code>…/exec</code>) 입력</li>
+  <li>사본을 새로 시작하는 경우: <code>발송큐·계약대기·승인대기·계약목록</code>의 데이터 행 삭제(맨 윗줄은 남김)</li>
+  <li>본인 번호로 시험 발송 → 서명 → 승인 → 완료 링크까지 한 번 확인</li>
+</ul>
+</section>
+
+</div></main>
+</div>
+<script>
+/* ======================================================================
+   ⭐ 설명서를 고쳤을 때 여기에 한 줄씩 추가하세요(최신을 맨 위에).
+   - date: 업데이트한 날짜 'YYYY-MM-DD'
+   - sections: 바뀐 장의 id (flow, send, approve, done, settings, mail, deploy, auth, faq, dont, first)
+               → 왼쪽 목차에 "업데이트" 라벨이 붙습니다.
+   - items: "최근 업데이트" 박스에 보일 내용
+   업데이트 날짜로부터 30일이 지나면 박스와 라벨은 자동으로 사라집니다(내역은 여기 그대로 남음).
+   ====================================================================== */
+const UPDATES = [
+  // 예시 — 아래 형식으로 맨 위에 추가하세요(주석 기호 // 없이).
+  // {
+  //   date: '2026-11-20',
+  //   sections: ['send', 'faq'],
+  //   items: ['바뀐 내용 한 줄', '바뀐 내용 두 줄']
+  // },
+];
+const UPDATE_SHOW_DAYS = 30;
+
+(function () {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const recent = UPDATES.filter(u => {
+    const d = new Date(u.date + 'T00:00:00');
+    const days = (today - d) / 86400000;
+    return days >= 0 && days < UPDATE_SHOW_DAYS;
+  });
+  if (!recent.length) return;
+  const list = document.getElementById('updates-list');
+  recent.forEach(u => {
+    const p = u.date.split('-');
+    const d = document.createElement('div'); d.className = 'd'; d.textContent = p[0] + '년 ' + Number(p[1]) + '월 ' + Number(p[2]) + '일';
+    const ul = document.createElement('ul');
+    u.items.forEach(t => { const li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
+    list.appendChild(d); list.appendChild(ul);
+    u.sections.forEach(id => {
+      const a = document.querySelector('nav.toc a[href="#' + id + '"]');
+      if (a) a.classList.add('has-upd');
+    });
+  });
+  document.getElementById('updates').style.display = 'block';
+})();
+</script>
+</body>
+</html>
